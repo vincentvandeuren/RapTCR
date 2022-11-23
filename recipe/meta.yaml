@@ -1,0 +1,35 @@
+{% set py_data = load_setup_py_data() %}
+
+package:
+  name: tcrexplore
+  version: {{ py_data['version'] }}
+
+source:
+  path: ..
+
+build:
+  noarch: python
+  script: {{ PYTHON }} -m pip install --no-deps --ignore-installed -vv .
+  number: 0
+  
+
+requirements:
+  host:
+    - python
+    - pip
+  run:
+    - python
+    # dependencies are defined in setup.py
+    {% for dep in py_data['install_requires'] %}
+    - {{ dep.lower() }}
+    {% endfor %}
+
+test:
+  imports:
+    - tcrexplore
+
+about:
+  home: https://github.com/vincentvandeuren/tcrexplore
+  summary: cluster-based visualization of T-cell receptor repertoires
+  license: {{ py_data.get('license') }}
+  license_file: LICENSE

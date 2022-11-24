@@ -8,6 +8,7 @@ from typing import Union
 from .analysis import TcrCollection, Repertoire, Cluster
 from .constants.hashing import AA_HASHES
 
+from sklearn.utils.validation import check_is_fitted
 
 class Cdr3Hasher(BaseEstimator, TransformerMixin):
     def __init__(self, pos_p: float = 0.5, clip: int = 0) -> None:
@@ -110,7 +111,7 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
         np.array[n,64]
             Array containing 64-dimensional hashes for each of the n provided inputs.
         """
-
+        check_is_fitted(self)
         match X:
             case Repertoire() | list() | np.ndarray():
                 return np.array([self.transform(s) for s in X])

@@ -29,7 +29,7 @@ test:
     - raptcr
 
 about:
-  home: https://github.com/vincentvandeuren/tcrexplore
-  summary: cluster-based visualization of T-cell receptor repertoires
+  home: https://github.com/vincentvandeuren/RapTCR
+  summary: Rapid TCR repertoire visualization and annotation
   license: {{ py_data.get('license') }}
   license_file: LICENSE

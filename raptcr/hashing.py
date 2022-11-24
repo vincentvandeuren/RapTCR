@@ -30,7 +30,7 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
 
     def fit(self, X=None, y=None):
         self._aa_hashes = AA_HASHES
-        self._pos_hashes = self._generate_pos_hashes()
+        self._pos_hashes_ = self._generate_pos_hashes()
         return self
 
     def _generate_pos_hashes(self) -> np.ndarray:
@@ -74,7 +74,7 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
             cdr3 = cdr3[self.clip : -self.clip]
         cdr3_len = len(cdr3)
         hashes = [
-            self._aa_hashes[aa] ^ self._pos_hashes[int(359 * i / (cdr3_len - 1))]
+            self._aa_hashes[aa] ^ self._pos_hashes_[int(359 * i / (cdr3_len - 1))]
             for i, aa in enumerate(cdr3)
         ]
         return self._sum_hashlist(hashes)
@@ -137,5 +137,5 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
         for i, kmer in _kmer_iterator(cdr3, k):
             zxor = zeros(64)
             [zxor := zxor ^ self._aa_hashes[aa] << i for i, aa in enumerate(kmer)]
-            hashlist.append(zxor.copy() ^ self._pos_hashes[i])
+            hashlist.append(zxor.copy() ^ self._pos_hashes_[i])
         return self._sum_hashlist(hashlist)

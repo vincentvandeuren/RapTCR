@@ -14,6 +14,13 @@ class TcrCollection(ABC):
     def __repr__(self) -> str:
         return f"TCR collection of size {len(self.data)}"
 
+    def __iter__(self):
+        for s in self.cdr3s:
+            yield s
+
+    def __getitem__(self, n):
+        return self.cdr3s[n]
+
     def to_df(self) -> pd.DataFrame:
         """Convert to pandas DataFrame
         """

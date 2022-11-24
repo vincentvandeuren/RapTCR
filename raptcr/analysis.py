@@ -9,7 +9,6 @@ class TcrCollection(ABC):
             raise ValueError(f"Input dataframe requires following columns: {required_cols}")
 
         self.data = df
-        super().__init__()
 
     def __repr__(self) -> str:
         return f"TCR collection of size {len(self.data)}"

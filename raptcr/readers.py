@@ -1,6 +1,6 @@
 import pandas as pd
 
-from analysis import Repertoire
+from .analysis import Repertoire
 
 
 def read_AIRR(

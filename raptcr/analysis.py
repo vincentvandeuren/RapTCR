@@ -1,5 +1,6 @@
 import pandas as pd
 from abc import ABC
+from functools import cached_property
 
 class TcrCollection(ABC):
     def __init__(self, df) -> None:
@@ -17,6 +18,10 @@ class TcrCollection(ABC):
         """Convert to pandas DataFrame
         """
         return self.data
+
+    @cached_property
+    def cdr3s(self):
+        return self.data["junction_aa"].to_list()
 
 
 class Repertoire(TcrCollection):

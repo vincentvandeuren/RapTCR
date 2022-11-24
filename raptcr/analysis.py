@@ -1,5 +1,3 @@
-from itertools import count
-from typing import Iterable, List
 import pandas as pd
 
 class Repertoire():

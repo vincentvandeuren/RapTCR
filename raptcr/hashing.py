@@ -30,7 +30,6 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
         self.pos_p = pos_p
 
     def fit(self, X=None, y=None):
-        print('thats fitting')
         self._aa_hashes = AA_HASHES
         self._pos_hashes = self._generate_pos_hashes()
         return self

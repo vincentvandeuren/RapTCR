@@ -9,6 +9,7 @@ requirements = [
     "pandas",
     "matplotlib",
     "seaborn",
+    "bitarray",
     "colorcet",
     "faiss-cpu",
 ]

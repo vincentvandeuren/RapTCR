@@ -3,7 +3,7 @@ import versioneer
 
 # conda package requirements
 requirements = [
-    "python==3.10",
+    "python>=3.10",
     "pip",
     "numpy",
     "pandas",
@@ -23,7 +23,7 @@ setup(
     author_email="vincent.vandeuren@uantwerpen.be",
     url="https://github.com/vincentvandeuren/RapTCR",
     packages=find_packages(),
-    #package_data={"RapTCR": ["data/bg_position_matrices.pkl","modules/olga/*",]}, !TODO not forget
+    #package_data={"raptcr": ["data/bg_position_matrices.pkl","modules/olga/*",]}, !TODO not forget
     #include_package_data=True,
     install_requires=requirements,
     keywords="",

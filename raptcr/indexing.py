@@ -106,7 +106,17 @@ class IvfIndex(BaseApproximateIndex):
         self, hasher: Cdr3Hasher, n_centroids: int = 32, nprobe: int = 5
     ) -> None:
         """
-        Inverted file index implementation.
+        Inverted file index for approximate nearest neighbour search.
+
+        Parameters
+        ----------
+        hasher : Cdr3Hasher
+            Fitted hasher object to transform CDR3 to vectors. 
+        n_centroids : int, default=32
+            Number of centroids for the initial k-means clustering.
+        nprobe : int, default=5
+            Number of centroids to search at query time. Higher nprobe means
+            higher recall, but slower speed.
         """
         idx = faiss.index_factory(64, f"IVF{n_centroids},Flat")
         super().__init__(idx, hasher)
@@ -114,11 +124,21 @@ class IvfIndex(BaseApproximateIndex):
 
 
 class HnswIndex(BaseApproximateIndex):
-    def __init__(self, hasher: Cdr3Hasher, M: int = 32) -> None:
+    def __init__(self, hasher: Cdr3Hasher, n_links: int = 32) -> None:
         """
         Index based on Hierarchical Navigable Small World networks.
+
+        Parameters
+        ----------
+        hasher : Cdr3Hasher
+            Fitted hasher object to transform CDR3 to vectors. 
+        n_links : int, default=32
+            Number of bi-directional links created for each element during index
+            construction. Increasing M leads to better recall but higher memory
+            size and slightly slower searching.
+
         """
-        idx = faiss.index_factory(64, f"HNSW{M},Flat")
+        idx = faiss.index_factory(64, f"HNSW{n_links},Flat")
         super().__init__(idx, hasher)
 
 
@@ -154,7 +174,7 @@ class KnnResult:
         s, k = self.D.shape
         return f"k-nearest neighbours result (k={k}, size={s})"
 
-    def extract_neighbours(self, cdr3:str) -> List[Tuple[str, float]]:
+    def extract_neighbours(self, cdr3: str) -> List[Tuple[str, float]]:
         """
         Query the KnnResult for neighbours of a specific sequence.
 

@@ -153,6 +153,21 @@ class FastApproximateIndex(BaseApproximateIndex):
         """
         Approximate index based on a combination of IVF and HNSW using scalar
         quantizer encoding.
+
+        Parameters
+        ----------
+
+        hasher : Cdr3Hasher
+            Fitted hasher object to transform CDR3 to vectors. 
+        n_centroids : int, default=32
+            Number of centroids for the initial k-means clustering.
+        nprobe : int, default=5
+            Number of centroids to search at query time. Higher nprobe means
+            higher recall, but slower speed.
+        n_links : int, default=32
+            Number of bi-directional links created for each element during index
+            construction. Increasing M leads to better recall but higher memory
+            size and slightly slower searching.
         """
         idx = faiss.index_factory(64, f"IVF{n_centroids}_HNSW{n_links},SQ6")
         super().__init__(idx, hasher)

@@ -13,7 +13,7 @@ from .hashing import Cdr3Hasher
 from .analysis import TcrCollection
 
 
-class BaseVisualization(ABC):
+class BaseVisualizer(ABC):
     """
     Abstract class for visualization.
     """
@@ -35,7 +35,7 @@ class BaseVisualization(ABC):
         ...
 
 
-class ParametricUmapVisualization(BaseVisualization):
+class ParametricUmapVisualizer(BaseVisualizer):
     def __init__(self, hasher: Cdr3Hasher, **kwargs) -> None:
         """
         Initiate ParametricUmapVisualization.

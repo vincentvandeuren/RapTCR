@@ -113,7 +113,7 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
         check_is_fitted(self)
         match X:
             case Repertoire() | list() | np.ndarray():
-                return np.array([self.transform(s) for s in X])
+                return np.array([self.transform(s) for s in X]).astype(np.float32)
             case Cluster():
                 return self._hash_collection(X)
             case _:

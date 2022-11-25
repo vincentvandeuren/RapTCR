@@ -10,7 +10,8 @@ requirements = [
     "matplotlib",
     "seaborn",
     "bitarray",
-    "umap-learn"
+    "umap-learn",
+    "tensorflow",
     "colorcet",
     "faiss-cpu",
 ]

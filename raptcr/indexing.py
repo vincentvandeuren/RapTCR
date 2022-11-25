@@ -214,4 +214,4 @@ class KnnResult:
         return self.ids.get(cdr3_id)
 
     def as_network(self, max_edge: float = 15):
-        pass
+        raise NotImplementedError()

@@ -1,7 +1,9 @@
 from abc import ABC
+from functools import partial
 from typing import List, Tuple
 
 import faiss
+from pynndescent import NNDescent
 import numpy as np
 
 from .hashing import Cdr3Hasher
@@ -46,6 +48,9 @@ class BaseIndex(ABC):
         if not self.idx.is_trained:
             raise ValueError("Index is untrained, please add first.")
 
+    def _search(self, x, k):
+        return self.idx.search(x=x, k=k)
+
     def knn_search(self, y: TcrCollection, k: int = 100):
         """
         Search index for k-nearest neighbours.
@@ -64,7 +69,7 @@ class BaseIndex(ABC):
         """
         self._assert_trained()
         hashes = self.hasher.transform(y).astype(np.float32)
-        D, I = self.idx.search(x=hashes, k=k)
+        D, I = self._search(x=hashes, k=k)
         return KnnResult(y, D, I, self.ids)
 
 
@@ -86,9 +91,57 @@ class ExactIndex(BaseIndex):
         super().__init__(idx, hasher)
 
 
+class PynndescentIndex(BaseIndex):
+    """
+    Approximate search using PyNNDescent.
+    """
+
+    def __init__(
+        self,
+        hasher: Cdr3Hasher,
+        n_neighbors: int = 100,
+        diversify_prob: float = 1.0,
+        pruning_degree_multiplier: float = 1.5,
+    ):
+        """
+        Initialize index.
+        """
+        idx = partial(
+            NNDescent,
+            n_neighbors=n_neighbors,
+            diversify_prob=diversify_prob,
+            pruning_degree_multiplier=pruning_degree_multiplier,
+        )
+        idx.is_trained = True
+        super().__init__(idx, hasher)
+
+
+    def _add_hashes(self, X):
+        self.idx = self.idx(X)
+        self.idx.is_trained = True
+    
+    def _search(self, x, k=None):
+        return self.idx.query(x)
+
+    def knn_search(self, y: TcrCollection=None):
+        """
+        Search index for nearest neighbours.
+
+        Parameters
+        ----------
+        y : TcrCollection, optional
+            Pass query TCRs if subset is needed. If not passed, returns the
+            neighbours used when adding the data to the index, which is much
+            faster.
+        """
+        if not y:
+            return self.idx.neighbor_graph
+        return super().knn_search(y)
+    
+
 class BaseApproximateIndex(BaseIndex):
     """
-    Abstract class for approximate indexes implementing the `nprobe` property.
+    Abstract class for approximate indexes implementing the `n_probe` property.
     """
 
     @property
@@ -111,7 +164,7 @@ class IvfIndex(BaseApproximateIndex):
         Parameters
         ----------
         hasher : Cdr3Hasher
-            Fitted hasher object to transform CDR3 to vectors. 
+            Fitted hasher object to transform CDR3 to vectors.
         n_centroids : int, default=32
             Number of centroids for the initial k-means clustering.
         n_probe : int, default=5
@@ -131,7 +184,7 @@ class HnswIndex:
         Parameters
         ----------
         hasher : Cdr3Hasher
-            Fitted hasher object to transform CDR3 to vectors. 
+            Fitted hasher object to transform CDR3 to vectors.
         n_links : int, default=32
             Number of bi-directional links created for each element during index
             construction. Increasing M leads to better recall but higher memory
@@ -158,7 +211,7 @@ class FastApproximateIndex(BaseApproximateIndex):
         ----------
 
         hasher : Cdr3Hasher
-            Fitted hasher object to transform CDR3 to vectors. 
+            Fitted hasher object to transform CDR3 to vectors.
         n_centroids : int, default=32
             Number of centroids for the initial k-means clustering.
         n_probe : int, default=5

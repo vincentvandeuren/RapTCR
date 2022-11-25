@@ -57,3 +57,23 @@ def read_AIRR(
         df = df.query('v_call.str.contains("TRB") or j_call.str.contains("TRB")')
 
     return Repertoire(df)
+
+
+def read_OLGA(filepath: str) -> Repertoire:
+    """
+    Read in data from an OLGA-generated `.tsv` file.
+
+    Parameters
+    ----------
+    filepath : str
+        Path of file.
+
+    Returns
+    -------
+    Repertoire
+        Repertoire object containing the data.
+    """
+    df = pd.read_csv(filepath, sep="\t", header=None)
+    df = df.drop(0, axis=1)
+    df.columns = ["junction_aa", "v_call", "j_call"]
+    return Repertoire(df)

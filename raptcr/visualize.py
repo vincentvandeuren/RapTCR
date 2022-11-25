@@ -38,7 +38,7 @@ class BaseVisualizer(ABC):
 class ParametricUmapVisualizer(BaseVisualizer):
     def __init__(self, hasher: Cdr3Hasher, **kwargs) -> None:
         """
-        Initiate ParametricUmapVisualization.
+        Initiate ParametricUmapVisualizer.
 
         Parameters
         ----------
@@ -71,7 +71,7 @@ class ParametricUmapVisualizer(BaseVisualizer):
 
     def transform(self, data: TcrCollection):
         """
-        Use trained UMAP model to generate 2D coördinates from TCR sequences.
+        Use trained UMAP model to generate 2D coordinates from TCR sequences.
 
         Parameters
         ----------
@@ -107,6 +107,14 @@ class ParametricUmapVisualizer(BaseVisualizer):
 
     @classmethod
     def from_file(cls, filepath: str):
+        """
+        Read a (trained) ParametricUmapVisualizer from a local savefile.
+
+        Parameters
+        ----------
+        filepath : str
+            Path and name of folder where model is stored.
+        """
         filepath = Path(filepath)
         pumap = load_ParametricUMAP(filepath / "ParametricUMAP")
         hasher = joblib.load(filepath / "Cdr3Hasher.joblib")
@@ -115,6 +123,14 @@ class ParametricUmapVisualizer(BaseVisualizer):
         return res
 
     def save(self, filepath: str):
+        """
+        Save a (trained) ParametricUmapVisualizer to a local file.
+
+        Parameters
+        ----------
+        filepath : str
+            Filepath and name of folder to save model in.
+        """
         filepath = Path(filepath)
         self.pumap.save(filepath / "ParametricUMAP")
         joblib.dump(self.hasher, filename=filepath / "Cdr3Hasher.joblib")

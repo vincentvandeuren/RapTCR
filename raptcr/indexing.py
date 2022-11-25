@@ -92,18 +92,18 @@ class BaseApproximateIndex(BaseIndex):
     """
 
     @property
-    def nprobe(self):
+    def n_probe(self):
         return faiss.extract_index_ivf(self.idx).nprobe
 
-    @nprobe.setter
-    def nprobe(self, n: int):
+    @n_probe.setter
+    def n_probe(self, n: int):
         ivf = faiss.extract_index_ivf(self.idx)
         ivf.nprobe = n
 
 
 class IvfIndex(BaseApproximateIndex):
     def __init__(
-        self, hasher: Cdr3Hasher, n_centroids: int = 32, nprobe: int = 5
+        self, hasher: Cdr3Hasher, n_centroids: int = 32, n_probe: int = 5
     ) -> None:
         """
         Inverted file index for approximate nearest neighbour search.
@@ -114,16 +114,16 @@ class IvfIndex(BaseApproximateIndex):
             Fitted hasher object to transform CDR3 to vectors. 
         n_centroids : int, default=32
             Number of centroids for the initial k-means clustering.
-        nprobe : int, default=5
-            Number of centroids to search at query time. Higher nprobe means
+        n_probe : int, default=5
+            Number of centroids to search at query time. Higher n_probe means
             higher recall, but slower speed.
         """
         idx = faiss.index_factory(64, f"IVF{n_centroids},Flat")
         super().__init__(idx, hasher)
-        self.nprobe = nprobe
+        self.n_probe = n_probe
 
 
-class HnswIndex(BaseApproximateIndex):
+class HnswIndex:
     def __init__(self, hasher: Cdr3Hasher, n_links: int = 32) -> None:
         """
         Index based on Hierarchical Navigable Small World networks.
@@ -148,7 +148,7 @@ class FastApproximateIndex(BaseApproximateIndex):
         hasher: Cdr3Hasher,
         n_centroids: int = 256,
         n_links: int = 32,
-        nprobe: int = 10,
+        n_probe: int = 10,
     ) -> None:
         """
         Approximate index based on a combination of IVF and HNSW using scalar
@@ -161,8 +161,8 @@ class FastApproximateIndex(BaseApproximateIndex):
             Fitted hasher object to transform CDR3 to vectors. 
         n_centroids : int, default=32
             Number of centroids for the initial k-means clustering.
-        nprobe : int, default=5
-            Number of centroids to search at query time. Higher nprobe means
+        n_probe : int, default=5
+            Number of centroids to search at query time. Higher n_probe means
             higher recall, but slower speed.
         n_links : int, default=32
             Number of bi-directional links created for each element during index
@@ -171,7 +171,7 @@ class FastApproximateIndex(BaseApproximateIndex):
         """
         idx = faiss.index_factory(64, f"IVF{n_centroids}_HNSW{n_links},SQ6")
         super().__init__(idx, hasher)
-        self.nprobe = nprobe
+        self.n_probe = n_probe
 
 
 class KnnResult:

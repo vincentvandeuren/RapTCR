@@ -99,7 +99,7 @@ class PynndescentIndex(BaseIndex):
     def __init__(
         self,
         hasher: Cdr3Hasher,
-        n_neighbors: int = 100,
+        k: int = 100,
         diversify_prob: float = 1.0,
         pruning_degree_multiplier: float = 1.5,
     ):
@@ -108,7 +108,7 @@ class PynndescentIndex(BaseIndex):
         """
         idx = partial(
             NNDescent,
-            n_neighbors=n_neighbors,
+            n_neighbors=k,
             diversify_prob=diversify_prob,
             pruning_degree_multiplier=pruning_degree_multiplier,
         )

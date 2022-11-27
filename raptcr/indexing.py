@@ -73,7 +73,7 @@ class BaseIndex(ABC):
         return KnnResult(y, D, I, self.ids)
 
 
-class ExactIndex(BaseIndex):
+class FlatIndex(BaseIndex):
     """
     Exact search for euclidean hash distance.
     """
@@ -130,9 +130,8 @@ class PynndescentIndex(BaseIndex):
         Parameters
         ----------
         y : TcrCollection, optional
-            Pass query TCRs if subset is needed. If not passed, returns the
-            neighbours used when adding the data to the index, which is much
-            faster.
+            The query TCRs. If not passed, returns the neighbours within the
+            data added to the index, which is much faster.
         """
         if not y:
             return self.idx.neighbor_graph

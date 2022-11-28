@@ -38,10 +38,10 @@ class BaseVisualizer(ABC):
         ...
 
 
-class ParametricUmap(BaseVisualizer):
+class ParametricUmapTransformer(BaseVisualizer):
     def __init__(self, hasher: Cdr3Hasher, **kwargs) -> None:
         """
-        Initiate ParametricUmap Transformer.
+        Initiate Parametric Umap Transformer.
 
         Parameters
         ----------

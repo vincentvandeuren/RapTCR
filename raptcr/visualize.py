@@ -136,13 +136,17 @@ class ParametricUmapPlotter:
         color_feature: str = None,
         size_feature: str = None,
         size_norm: str = None,
-        hue_norm: str = None,
+        color_norm: str = None,
         **kwargs
     ) -> plt.Axes:
 
         size_norm = self._parse_norms(size_norm)
-        hue_norm = self._parse_norms(size_norm)
-        color_feature = self._parse_color_feature(color_feature)
+        color_norm = self._parse_norms(color_norm)
+        if color_feature:
+            if color_feature in self.df:
+                self.df = self.df.sort_values(color_feature)
+            color_feature = self._parse_color_feature(color_feature)
+        size_feature_kwargs = self._parse_size_feature(size_feature)
 
         if self.bg_df is not None:
             sns.scatterplot(
@@ -150,9 +154,6 @@ class ParametricUmapPlotter:
                 data=self.bg_df,
                 x="x",
                 y="y",
-                size=size_feature,
-                size_norm=size_norm,
-                s=2,
                 color="lightgrey",
                 linewidth=0,
                 alpha=0.4,
@@ -161,18 +162,17 @@ class ParametricUmapPlotter:
 
         sns.scatterplot(
             ax=ax,
-            data=self.df.sort_values(color_feature),
+            data=self.df,
             x="x",
             y="y",
-            size=size_feature,
-            size_norm=size_norm,
-            sizes=(1, 15),
             hue=color_feature,
-            hue_norm=hue_norm,
+            hue_norm=color_norm,
             linewidth=0,
             alpha=0.4,
             rasterized=True,
             palette=kwargs.get("palette", "rocket_r"),
+            size_norm=size_norm,
+            **size_feature_kwargs
         )
 
         # place legend outside
@@ -183,11 +183,10 @@ class ParametricUmapPlotter:
     def _parse_norms(self, norm: str) -> Normalize:
         norm_map = {
             "log": LogNorm(),
-            "log2": FuncNorm(functions=(np.log2, lambda x: 2**x)),
-            None: NoNorm(),
+            "log2": FuncNorm(functions=(np.log2, lambda x: 2**x))
         }
 
-        return norm_map[norm]
+        return norm_map.get(norm, NoNorm())
 
     def _parse_color_feature(self, color_feature) -> Union[str, pd.Series]:
         if color_feature in self.df:
@@ -198,6 +197,14 @@ class ParametricUmapPlotter:
                 return self._relative_density()
             case ["relative", "density", bw]:
                 return self._relative_density(bw=bw)
+
+    def _parse_size_feature(self, size_feature) -> Union[str, pd.Series]:
+        if not size_feature:
+            return dict(s=2)
+
+        if size_feature in self.df:
+            return dict(size=size_feature)
+
 
     def _relative_density(self, bw=None):
         emb_1 = self.df[["x", "y"]].T.to_numpy()

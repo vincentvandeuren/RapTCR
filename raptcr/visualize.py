@@ -11,10 +11,11 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.cm import ScalarMappable
-from matplotlib.colors import Normalize, LogNorm, SymLogNorm
+from matplotlib.colors import Normalize, LogNorm, SymLogNorm, FuncNorm
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 import seaborn as sns
 from scipy.stats import gaussian_kde
+from scipy.stats.mstats import winsorize
 from .hashing import Cdr3Hasher
 from .analysis import TcrCollection
 
@@ -113,7 +114,9 @@ class ParametricUmapPlotter:
         ax=plt.Axes,
         color_feature: str = None,
         norm: str = None,
-        plot_bg: bool = False
+        plot_bg: bool = False,
+        plot_legend : bool = False,
+        winsorized: bool= False,
     ) -> plt.Axes:
 
         if color_feature not in self.df.columns:
@@ -121,39 +124,52 @@ class ParametricUmapPlotter:
 
         if self.df[color_feature].dtype.name in ["category", "object"]:
             # categorical coloring
-            cmap = chain.from_iterable(repeat(cc.glasbey_category10))
+            colors = chain.from_iterable(repeat(cc.glasbey_category10))
             mapper = {
                 i: c
-                for i, c in zip(self.df[color_feature].unique(), cmap)
+                for i, c in zip(self.df[color_feature].unique(), colors)
             }
-            self.df = self.df.sort_values(by=color_feature)
+            if None in self.df[color_feature].to_list():
+                mapper[None] = [0.7,0.7,0.7]
+
+            if color_feature in ["clustcr_cluster"]:
+                pass
+            else:
+                self.df = self.df.sort_values(by=color_feature)
+
             c = self.df[color_feature].map(mapper).to_list()
 
-            handles = [
-                Line2D(
-                    [0],
-                    [0],
-                    marker="o",
-                    color="w",
-                    markerfacecolor=v,
-                    label=k,
-                    markersize=8,
+            if plot_legend:
+                handles = [
+                    Line2D(
+                        [0],
+                        [0],
+                        marker="o",
+                        color="w",
+                        markerfacecolor=v,
+                        label=k,
+                        markersize=8,
+                    )
+                    for k, v in mapper.items()
+                ]
+                ax.legend(
+                    title=color_feature,
+                    handles=handles,
+                    bbox_to_anchor=(1.05, 1),
+                    loc="upper left",
                 )
-                for k, v in mapper.items()
-            ]
-            ax.legend(
-                title=color_feature,
-                handles=handles,
-                bbox_to_anchor=(1.05, 1),
-                loc="upper left",
-            )
 
         else:
             # scalar color
-            vmin = min(self.df[color_feature])
-            vmax = max(self.df[color_feature])
+            if not winsorized:
+                vmin = min(self.df[color_feature].replace([np.inf, -np.inf],np.nan))
+                vmax = max(self.df[color_feature].replace([np.inf, -np.inf],np.nan))
+            else:
+                vmin = min(winsorize(self.df['relative_density_0.05'], limits=(0.01,0.01)))
+                vmax = max(winsorize(self.df['relative_density_0.05'], limits=(0.01,0.01)))
             match norm:
                 case "log": norm_ = LogNorm(vmin=vmin, vmax=vmax)
+                case "log2": norm_ = FuncNorm(functions=(np.log2, lambda x: 2**x))
                 case "symlog": norm_ = SymLogNorm(linthresh=0.3, linscale=0.3, vmin=vmin, vmax=vmax, base=10)
                 case "symlog2": norm_ = SymLogNorm(linthresh=0.3, linscale=0.3, vmin=vmin, vmax=vmax, base=2)
                 case _: norm_ = Normalize(vmin=vmin, vmax=vmax)
@@ -166,18 +182,19 @@ class ParametricUmapPlotter:
 
             c = [sm.to_rgba(x) for x in self.df[color_feature]]
 
-            divider = make_axes_locatable(ax)
-            cax = divider.append_axes("right", size="5%", pad=0.05)
-            ax.get_figure().colorbar(sm, cax=cax, shrink=0.5)
+            if plot_legend:
+                divider = make_axes_locatable(ax)
+                cax = divider.append_axes("right", size="5%", pad=0.05)
+                ax.get_figure().colorbar(sm, cax=cax, shrink=0.5)
 
         if plot_bg:
             ax.scatter(
                 x=self.bg_df.x,
                 y=self.bg_df.y,
                 c='lightgrey',
-                s=10,
+                s=5,
                 rasterized=True,
-                alpha=0.4,
+                alpha=0.5,
                 linewidth=0,
             )
 
@@ -186,9 +203,9 @@ class ParametricUmapPlotter:
             x=self.df.x,
             y=self.df.y,
             c=c,
-            s=10,
+            s=5,
             rasterized=True,
-            alpha=0.4,
+            alpha=0.5,
             linewidth=0,
         )
 
@@ -197,7 +214,7 @@ class ParametricUmapPlotter:
     def _parse_color_feature(self, color_feature) -> None:
         match color_feature.split('_'):
             case ["relative", "density", bw]:
-                self.df[color_feature] = self._relative_density(bw)
+                self.df[color_feature] = self._relative_density(float(bw))
             case ["clustcr", "cluster"]:
                 self.df[color_feature] = self._clustcr_cluster()
 
@@ -208,6 +225,7 @@ class ParametricUmapPlotter:
             emb_2, bw_method=bw
         )(emb_1)
         return res
+    
     
     def _clustcr_cluster(self) -> pd.Series:
 
@@ -225,5 +243,6 @@ class ParametricUmapPlotter:
             on="junction_aa",
         )
 
-        return df_["cluster"].fillna(-1).astype(str).to_list()
-
+        res = df_["cluster"]
+        res = np.where(pd.isna(res), None, res.fillna(-1).astype(int).astype(str))
+        return res

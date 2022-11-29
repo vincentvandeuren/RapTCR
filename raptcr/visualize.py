@@ -3,12 +3,17 @@ import joblib
 from pathlib import Path
 from typing import Union
 
+import colorcet as cc
 import numpy as np
 import pandas as pd
 from umap import ParametricUMAP
 from umap.parametric_umap import load_ParametricUMAP
 import tensorflow as tf
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import Normalize, LogNorm, SymLogNorm
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import seaborn as sns
 from scipy.stats import gaussian_kde
 from .hashing import Cdr3Hasher
@@ -133,64 +138,83 @@ class ParametricUmapPlotter:
         self,
         ax=plt.Axes,
         color_feature: str = None,
-        size_feature: str = None,
-        **kwargs
+        norm: str = None,
+        plot_bg: bool = False
     ) -> plt.Axes:
 
-        if color_feature:
-            color_feature = self._parse_color_feature(color_feature)
-            self.df = self.df.sort_values(color_feature)
-        size_feature_kwargs = self._parse_size_feature(size_feature)
+        if self.df[color_feature].dtype.name in ["category", "object"]:
+            # categorical coloring
+            mapper = {
+                i: c
+                for i, c in zip(self.df[color_feature].unique(), cc.glasbey_category10)
+            }
+            self.df = self.df.sort_values(by=color_feature)
+            c = self.df[color_feature].map(mapper).to_list()
 
-        if self.bg_df is not None:
-            sns.scatterplot(
-                ax=ax,
-                data=self.bg_df,
-                x="x",
-                y="y",
-                color="lightgrey",
-                linewidth=0,
-                alpha=0.4,
-                rasterized=True,
-                s = 3
+            handles = [
+                Line2D(
+                    [0],
+                    [0],
+                    marker="o",
+                    color="w",
+                    markerfacecolor=v,
+                    label=k,
+                    markersize=8,
+                )
+                for k, v in mapper.items()
+            ]
+            ax.legend(
+                title=color_feature,
+                handles=handles,
+                bbox_to_anchor=(1.05, 1),
+                loc="upper left",
             )
 
-        sns.scatterplot(
-            ax=ax,
-            data=self.df,
-            x="x",
-            y="y",
-            hue=color_feature,
-            linewidth=0,
-            alpha=0.4,
+        else:
+            # scalar color
+            vmin = min(self.df[color_feature])
+            vmax = max(self.df[color_feature])
+            match norm:
+                case "log": norm_ = LogNorm(vmin=vmin, vmax=vmax)
+                case "symlog": norm_ = SymLogNorm(linthresh=0.3, linscale=0.3, vmin=vmin, vmax=vmax, base=10)
+                case "symlog2": norm_ = SymLogNorm(linthresh=0.3, linscale=0.3, vmin=vmin, vmax=vmax, base=2)
+                case _: norm_ = Normalize(vmin=vmin, vmax=vmax)
+
+            match norm:
+                case ("symlog" | "symlog2"): cmap_ = "RdBu_r"
+                case _: cmap_ = sns.color_palette("rocket_r", as_cmap=True)
+
+            sm = ScalarMappable(norm=norm_, cmap=cmap_)
+
+            c = [sm.to_rgba(x) for x in self.df[color_feature]]
+
+            divider = make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="5%", pad=0.05)
+            ax.get_figure().colorbar(sm, cax=cax, shrink=0.5)
+
+        if plot_bg:
+            ax.scatter(
+                x=self.bg_df.x,
+                y=self.bg_df.y,
+                c='lightgrey',
+                s=10,
+                rasterized=True,
+                alpha=0.4,
+                linewidth=0,
+            )
+
+
+        ax.scatter(
+            x=self.df.x,
+            y=self.df.y,
+            c=c,
+            s=10,
             rasterized=True,
-            cmap="rocket_r",
-            **size_feature_kwargs,
+            alpha=0.4,
+            linewidth=0,
         )
 
-        # place legend outside
-        ax.legend(bbox_to_anchor=(1, 1), loc="upper left")
-
-        return ax
-
-    def _parse_color_feature(self, color_feature) -> Union[str, pd.Series]:
-        if color_feature in self.df:
-            return color_feature
-
-        match color_feature.split("_"):
-            case ["relative", "density"]:
-                self.df[color_feature] = self._relative_density()
-            case ["relative", "density", bw]:
-                self.df[color_feature] = self._relative_density(bw=float(bw))
-
-        return color_feature
-
-    def _parse_size_feature(self, size_feature) -> Union[str, pd.Series]:
-        if not size_feature:
-            return dict(s=3)
-
-        if size_feature in self.df:
-            return dict(size=size_feature, sizes=(1,30))
+        sns.despine()
 
     def _relative_density(self, bw=None):
         emb_1 = self.df[["x", "y"]].T.to_numpy()
@@ -199,4 +223,3 @@ class ParametricUmapPlotter:
             emb_2, bw_method=bw
         )(emb_1)
         return res
-

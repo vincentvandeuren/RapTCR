@@ -20,29 +20,7 @@ from .hashing import Cdr3Hasher
 from .analysis import TcrCollection
 
 
-class BaseVisualizer(ABC):
-    """
-    Abstract class for visualization.
-    """
-
-    def __repr__(self) -> str:
-        return "RapTCR Visualization"
-
-    @abstractmethod
-    def save(self, filepath: str) -> None:
-        ...
-
-    @classmethod
-    @abstractmethod
-    def from_file(self, filepath: str):
-        ...
-
-    @abstractmethod
-    def plot(self, data: TcrCollection):
-        ...
-
-
-class ParametricUmapTransformer(BaseVisualizer):
+class ParametricUmapTransformer:
     def __init__(self, hasher: Cdr3Hasher, **kwargs) -> None:
         """
         Initiate Parametric Umap Transformer.
@@ -94,9 +72,6 @@ class ParametricUmapTransformer(BaseVisualizer):
         embedding = self.pumap.transform(hashes)
         data.data["x"], data.data["y"] = embedding.T
         return data.to_df()
-
-    def plot(self, data: TcrCollection, color_feature: pd.Series) -> np.ndarray:
-        pass
 
     @classmethod
     def from_file(cls, filepath: str):

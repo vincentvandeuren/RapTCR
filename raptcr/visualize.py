@@ -212,13 +212,30 @@ class ParametricUmapPlotter:
         sns.despine()
 
     def _parse_color_feature(self, color_feature) -> None:
+        """
+        Parses input color feature, computes and adds column to self.df for
+        specific features where a function is available.
+        """
         match color_feature.split('_'):
             case ["relative", "density", bw]:
-                self.df[color_feature] = self._relative_density(float(bw))
+                try : 
+                    bw = float(bw)
+                except ValueError:
+                    pass
+                self.df[color_feature] = self._relative_density(bw)
             case ["clustcr", "cluster"]:
                 self.df[color_feature] = self._clustcr_cluster()
 
     def _relative_density(self, bw=None) -> pd.Series:
+        """
+        Compare the density of two scatterplots in each point using kernel
+        density estimates.
+
+        Parameters
+        ----------
+        bw : float, optional
+            Kernel density estimation bandwidth.
+        """
         emb_1 = self.df[["x", "y"]].T.to_numpy()
         emb_2 = self.bg_df[["x", "y"]].T.to_numpy()
         res = gaussian_kde(emb_1, bw_method=bw)(emb_1) / gaussian_kde(

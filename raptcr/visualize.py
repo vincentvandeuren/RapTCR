@@ -1,7 +1,6 @@
-from abc import ABC, abstractmethod
+from itertools import repeat, chain
 import joblib
 from pathlib import Path
-from typing import Union
 
 import colorcet as cc
 import numpy as np
@@ -117,11 +116,15 @@ class ParametricUmapPlotter:
         plot_bg: bool = False
     ) -> plt.Axes:
 
+        if color_feature not in self.df.columns:
+            self._parse_color_feature(color_feature)
+
         if self.df[color_feature].dtype.name in ["category", "object"]:
             # categorical coloring
+            cmap = chain.from_iterable(repeat(cc.glasbey_category10))
             mapper = {
                 i: c
-                for i, c in zip(self.df[color_feature].unique(), cc.glasbey_category10)
+                for i, c in zip(self.df[color_feature].unique(), cmap)
             }
             self.df = self.df.sort_values(by=color_feature)
             c = self.df[color_feature].map(mapper).to_list()
@@ -191,10 +194,36 @@ class ParametricUmapPlotter:
 
         sns.despine()
 
-    def _relative_density(self, bw=None):
+    def _parse_color_feature(self, color_feature) -> None:
+        match color_feature.split('_'):
+            case ["relative", "density", bw]:
+                self.df[color_feature] = self._relative_density(bw)
+            case ["clustcr", "cluster"]:
+                self.df[color_feature] = self._clustcr_cluster()
+
+    def _relative_density(self, bw=None) -> pd.Series:
         emb_1 = self.df[["x", "y"]].T.to_numpy()
         emb_2 = self.bg_df[["x", "y"]].T.to_numpy()
         res = gaussian_kde(emb_1, bw_method=bw)(emb_1) / gaussian_kde(
             emb_2, bw_method=bw
         )(emb_1)
         return res
+    
+    def _clustcr_cluster(self) -> pd.Series:
+
+        try:
+            from clustcr.clustering.clustering import Clustering
+        except ImportError:
+            raise ImportError('ClusTCR is not installed in current environment')
+
+        cr = Clustering(method="mcl").fit(self.df["junction_aa"])
+
+        df_ = pd.merge(
+            how="left",
+            left=self.df,
+            right=cr.clusters_df,
+            on="junction_aa",
+        )
+
+        return df_["cluster"].fillna(-1).astype(str).to_list()
+

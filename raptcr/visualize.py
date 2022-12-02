@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 from umap import ParametricUMAP
 from umap.parametric_umap import load_ParametricUMAP
-import tensorflow as tf
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.cm import ScalarMappable
@@ -117,6 +116,7 @@ class ParametricUmapPlotter:
         plot_bg: bool = False,
         plot_legend : bool = False,
         winsorized: bool= False,
+        **kwargs
     ) -> plt.Axes:
 
         if color_feature not in self.df.columns:
@@ -196,6 +196,7 @@ class ParametricUmapPlotter:
                 rasterized=True,
                 alpha=0.5,
                 linewidth=0,
+                **kwargs
             )
 
 

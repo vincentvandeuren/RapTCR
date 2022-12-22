@@ -1,58 +1,83 @@
-from bitarray.util import urandom, zeros
 from functools import lru_cache
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.manifold import MDS
 from typing import Union
 
 from .analysis import TcrCollection, Repertoire, Cluster
-from .constants.hashing import AA_HASHES
+from .constants.base import AALPHABET
 
 from sklearn.utils.validation import check_is_fitted
 
+
+def sinusoidal_encoding(sequence_len:int, m:int, min_frequency=0.1) -> np.ndarray:
+    """
+    Generate positional encoding based on sinus and cosinus functions with
+    geometrically increasing wavelenghts.
+    """
+    position = np.arange(sequence_len)
+    freqs = min_frequency**(2*(np.arange(m)//2)/m)
+    pos_enc = position.reshape(-1,1)*freqs.reshape(1,-1)
+    pos_enc[:, ::2] = np.cos(pos_enc[:, ::2])
+    pos_enc[:, 1::2] = np.sin(pos_enc[:, 1::2])
+    return pos_enc
+
 class Cdr3Hasher(BaseEstimator, TransformerMixin):
-    def __init__(self, pos_p: float = 0.5, clip: int = 0) -> None:
+    def __init__(self, distance_matrix:np.array, m:int=16, min_frequency:float=0.9, position_weight:float=1.0, trim_left:int=0, trim_right:int=0) -> None:
         """
         Locality-sensitive hashing for amino acid sequences. Hashes CDR3
-        sequences of varying lengths into 64-dimensional vectors, preserving
+        sequences of varying lengths into m-dimensional vectors, preserving
         similarity.
 
         Parameters
         ----------
-        pos_p : float
-            The relative importance of AA position for constructing the hash. A
-            value 0.4-0.6 showed best performance.
-        clip : int, default = 0
-            Clip the CDR3s with size n, thus ignoring first n and last n AAs.
         """
-        self.clip = clip
-        self.pos_p = pos_p
+        self.m = m
+        self.distance_matrix = distance_matrix
+        self.position_weight = position_weight
+        self.min_frequency = min_frequency
+        self.trim_left = trim_left
+        self.trim_right = trim_right
 
     def fit(self, X=None, y=None):
-        self._aa_hashes = AA_HASHES
-        self._pos_hashes_ = self._generate_pos_hashes()
+        """
+        Fit Cdr3Hasher. This method generates the necessary components for hashing.
+        """
+        self.aa_vectors_ = self._construct_aa_vectors()
+        self.position_vectors_ = self._construct_position_vectors()
         return self
 
-    def _generate_pos_hashes(self) -> np.ndarray:
+    def _construct_aa_vectors(self) -> dict:
         """
-        Construct the position hash bitstring building blocks.
-
-        TODO: Hardcode these once optimized, remove randomness.
+        Create dictionary containing AA's and their corresponding hashes, of
+        type str : np.ndarray[m].
         """
+        vecs = MDS(n_components=self.m, dissimilarity="precomputed").fit_transform(self.distance_matrix)
+        vecs_dict = {aa:vec for aa,vec in zip(AALPHABET, vecs)}
+        return vecs_dict
 
-        def _mutate_random(s):
-            i = np.random.randint(0, 64)
-            s[i] = not s[i]
-            return s
+    def _construct_position_vectors(self) -> dict:
+        """
+        Create positional encoding matrix for different CDR3 lengths
 
-        position_arr = {}
-        s = urandom(64)
-        for n in range(0, 360):
-            for _ in range(int(self.pos_p)):
-                s = _mutate_random(s)
-            if np.random.random() <= self.pos_p - int(self.pos_p):
-                s = _mutate_random(s)
-            position_arr[n] = s.copy()
-        return position_arr
+        Returns
+        -------
+        dict int : np.ndarray[m, l]
+            Dict of encoding matrices for each CDR3 sequence length l.
+        """
+        position_vectors = dict()
+        for cdr3_length in range(1,50): # maximum hashable sequence length = 50
+            vector = sinusoidal_encoding(cdr3_length, self.m, self.min_frequency)
+            scaled_vector = 1 + self.position_weight*(vector-1)
+            position_vectors[cdr3_length] = scaled_vector
+        return position_vectors
+
+    def _pool(self, aa_vectors:np.ndarray, position_vectors:np.ndarray) -> np.ndarray:
+        """
+        Pool position-encoded AA hashes along y-axis.
+        """
+        return np.multiply(aa_vectors, position_vectors).sum(axis=0)
+
 
     @lru_cache(maxsize=None)
     def _hash_cdr3(self, cdr3: str) -> np.array:
@@ -66,17 +91,17 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
 
         Returns
         -------
-        np.array[64,]
+        np.array[m,]
             The resulting hash vector.
         """
-        if self.clip:
-            cdr3 = cdr3[self.clip : -self.clip]
-        cdr3_len = len(cdr3)
-        hashes = [
-            self._aa_hashes[aa] ^ self._pos_hashes_[int(359 * i / (cdr3_len - 1))]
-            for i, aa in enumerate(cdr3)
-        ]
-        return self._sum_hashlist(hashes)
+        # trim CDR3 sequence
+        r = -self.trim_right if self.trim_right else len(cdr3)
+        cdr3 = cdr3[self.trim_left:r]
+        # hash
+        l = len(cdr3)
+        aas = np.array([self.aa_vectors_[aa] for aa in cdr3])
+        pos = self.position_vectors_[l]
+        return self._pool(aas, pos)
 
     def _hash_collection(self, seqs: TcrCollection) -> np.array:
         """
@@ -92,8 +117,8 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
         np.array[64,]
             The resulting hash vector.
         """
-        ch = [self._hash_cdr3(cdr3) for cdr3 in seqs.cdr3s]
-        return np.mean(ch, axis=0)
+        sequence_hashes = [self._hash_cdr3(cdr3) for cdr3 in seqs.cdr3s]
+        return np.mean(sequence_hashes, axis=0)
 
     def transform(self, X: Union[TcrCollection, list, str], y=None) -> np.array:
         """
@@ -107,8 +132,8 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
 
         Returns
         -------
-        np.array[n,64]
-            Array containing 64-dimensional hashes for each of the n provided inputs.
+        np.array[n,m]
+            Array containing m-dimensional hashes for each of the n provided inputs.
         """
         check_is_fitted(self)
         match X:
@@ -118,23 +143,3 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
                 return self._hash_collection(X)
             case _:
                 return self._hash_cdr3(X)
-
-    def _sum_hashlist(self, hashlist) -> np.array:
-        mh = np.array([h.tolist() for h in hashlist])
-        mh[mh == 0] = -1
-        mh = mh.sum(axis=0)
-        return mh
-
-    def hash_cdr3_kmerized(self, cdr3: str, k: int):
-        """Experimental! Use subsequences of length k (k-mers) as the AA-hash basis."""
-
-        def _kmer_iterator(s, k):
-            for i in range(len(s) - k + 1):
-                yield (i, s[i : i + k])
-
-        hashlist = []
-        for i, kmer in _kmer_iterator(cdr3, k):
-            zxor = zeros(64)
-            [zxor := zxor ^ self._aa_hashes[aa] << i for i, aa in enumerate(kmer)]
-            hashlist.append(zxor.copy() ^ self._pos_hashes_[i])
-        return self._sum_hashlist(hashlist)

@@ -15,12 +15,10 @@ def sinusoidal_encoding(sequence_len:int, m:int, min_frequency=0.1) -> np.ndarra
     Generate positional encoding based on sinus and cosinus functions with
     geometrically increasing wavelenghts.
     """
-    position = np.arange(sequence_len)
-    freqs = min_frequency**(2*(np.arange(m)//2)/m)
-    pos_enc = position.reshape(-1,1)*freqs.reshape(1,-1)
-    pos_enc[:, ::2] = np.cos(pos_enc[:, ::2])
-    pos_enc[:, 1::2] = np.sin(pos_enc[:, 1::2])
-    return pos_enc
+    position = (np.arange(2,sequence_len+2)/sequence_len)*2*np.pi
+    freqs = min_frequency**(np.arange(m)/m)
+    position_enc = freqs.reshape(1,-1)*position.reshape(-1,1)
+    return np.cos(position_enc)
 
 class Cdr3Hasher(BaseEstimator, TransformerMixin):
     def __init__(self, distance_matrix:np.array, m:int=16, min_frequency:float=0.9, position_weight:float=1.0, trim_left:int=0, trim_right:int=0) -> None:

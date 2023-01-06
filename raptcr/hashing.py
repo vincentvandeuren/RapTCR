@@ -6,22 +6,33 @@ from typing import Union
 
 from .analysis import TcrCollection, Repertoire, Cluster
 from .constants.base import AALPHABET
+from .constants.hashing import BLOSUM_62, blosum_to_distance_matrix
 
 from sklearn.utils.validation import check_is_fitted
 
-
-def sinusoidal_encoding(sequence_len:int, m:int, min_frequency=0.1) -> np.ndarray:
+def positional_encoding(sequence_len:int, m:int, p=10, max_rotations=0.5) -> np.ndarray:
     """
     Generate positional encoding based on sinus and cosinus functions with
     geometrically increasing wavelenghts.
+
+    Parameters
+    ----------
+    sequence_len : int
+        Number of AAs in the CDR3 sequence.
+    m : int
+        Number of output vector dimensions.
+    p : int
+        Exponent.
+    max rotations : float
+        Number of cycles the sine wave goes through.
     """
-    position = (np.arange(2,sequence_len+2)/sequence_len)*2*np.pi
-    freqs = min_frequency**(np.arange(m)/m)
-    position_enc = freqs.reshape(1,-1)*position.reshape(-1,1)
-    return np.cos(position_enc)
+    distances = np.tile(np.arange(sequence_len)/sequence_len, (m,1)).T - np.tile(np.arange(m)/m, (sequence_len,1))
+    cos_distances = np.cos(distances*2*np.pi*max_rotations)
+    pow_cos_distances = np.power(cos_distances, p)
+    return pow_cos_distances
 
 class Cdr3Hasher(BaseEstimator, TransformerMixin):
-    def __init__(self, distance_matrix:np.array, m:int=16, min_frequency:float=0.9, position_weight:float=1.0, trim_left:int=0, trim_right:int=0) -> None:
+    def __init__(self, distance_matrix:np.array=blosum_to_distance_matrix(BLOSUM_62), m:int=16, p:float=10.0, max_rotations:float=2.0, position_weight:float=1.0, trim_left:int=0, trim_right:int=0) -> None:
         """
         Locality-sensitive hashing for amino acid sequences. Hashes CDR3
         sequences of varying lengths into m-dimensional vectors, preserving
@@ -33,7 +44,8 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
         self.m = m
         self.distance_matrix = distance_matrix
         self.position_weight = position_weight
-        self.min_frequency = min_frequency
+        self.max_rotations = max_rotations
+        self.p = p
         self.trim_left = trim_left
         self.trim_right = trim_right
 
@@ -65,7 +77,7 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
         """
         position_vectors = dict()
         for cdr3_length in range(1,50): # maximum hashable sequence length = 50
-            vector = sinusoidal_encoding(cdr3_length, self.m, self.min_frequency)
+            vector = positional_encoding(cdr3_length, self.m, self.p, self.max_rotations)
             scaled_vector = 1 + self.position_weight*(vector-1)
             position_vectors[cdr3_length] = scaled_vector
         return position_vectors

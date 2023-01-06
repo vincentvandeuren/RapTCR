@@ -6,7 +6,7 @@ from typing import Union
 
 from .analysis import TcrCollection, Repertoire, Cluster
 from .constants.base import AALPHABET
-from .constants.hashing import BLOSUM_62, blosum_to_distance_matrix
+from .constants.hashing import DEFAULT_DM
 
 from sklearn.utils.validation import check_is_fitted
 
@@ -32,7 +32,7 @@ def positional_encoding(sequence_len:int, m:int, p=10, max_rotations=0.5) -> np.
     return pow_cos_distances
 
 class Cdr3Hasher(BaseEstimator, TransformerMixin):
-    def __init__(self, distance_matrix:np.array=blosum_to_distance_matrix(BLOSUM_62), m:int=16, p:float=10.0, max_rotations:float=2.0, position_weight:float=1.0, trim_left:int=0, trim_right:int=0) -> None:
+    def __init__(self, distance_matrix, m:int=16, p:float=10.0, max_rotations:float=2.0, position_weight:float=1.0, trim_left:int=0, trim_right:int=0) -> None:
         """
         Locality-sensitive hashing for amino acid sequences. Hashes CDR3
         sequences of varying lengths into m-dimensional vectors, preserving

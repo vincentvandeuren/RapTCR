@@ -30,3 +30,5 @@ def blosum_to_distance_matrix(blosum_matrix:np.ndarray, scaling_factor:float=0.2
     pab = pab_fa_fb/fa_fb
     distance_matrix = 1-pab
     return distance_matrix
+
+DEFAULT_DM = blosum_to_distance_matrix(BLOSUM_62)

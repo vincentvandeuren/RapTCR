@@ -24,6 +24,21 @@ BLOSUM_62 = np.array([
  ])
 
 def blosum_to_distance_matrix(blosum_matrix:np.ndarray, scaling_factor:float=0.2) -> np.ndarray:
+    """
+    Convert BLOSUM substitution matrix to AA dissimilarity matrix.
+
+    Parameters
+    ----------
+    blosum_matrix : np.ndarray
+        20x20 matrix, with columns and rows corresponding to the AA alphabet
+    scaling_factor : float, default = 0.2
+        Scaling factor originally used to generate int values in the BLOSUM matrix.
+
+    See also
+    --------
+    https://doi.org/10.1073%2Fpnas.89.22.10915
+    https://doi.org/10.1038/nbt0804-1035
+    """
     pab_fa_fb = np.power(np.e, scaling_factor*blosum_matrix)
     f_AA = np.sqrt(np.diag(pab_fa_fb))
     fa_fb = np.outer(f_AA,f_AA)

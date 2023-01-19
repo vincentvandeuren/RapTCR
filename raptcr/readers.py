@@ -77,3 +77,6 @@ def read_OLGA(filepath: str) -> Repertoire:
     df = df.drop(0, axis=1)
     df.columns = ["junction_aa", "v_call", "j_call"]
     return Repertoire(df)
+
+def read_clustcr(filepath: str) -> Repertoire:
+    raise NotImplementedError()

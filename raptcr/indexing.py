@@ -1,10 +1,11 @@
 from abc import ABC
 from functools import partial
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 
 import faiss
 from pynndescent import NNDescent
 import numpy as np
+import pandas as pd
 
 from .hashing import Cdr3Hasher
 from .analysis import TcrCollection
@@ -43,6 +44,7 @@ class BaseIndex(ABC):
         hashes = self.hasher.transform(X).astype(np.float32)
         self._add_hashes(hashes)
         self._add_ids(X)
+        return self
 
     def _assert_trained(self):
         if not self.idx.is_trained:
@@ -87,7 +89,7 @@ class FlatIndex(BaseIndex):
         hasher : Cdr3Hasher
             Fitted Cdr3Hasher class.
         """
-        idx = faiss.IndexFlatL2(64)
+        idx = faiss.IndexFlatL2(hasher.m)
         super().__init__(idx, hasher)
 
 
@@ -120,8 +122,14 @@ class PynndescentIndex(BaseIndex):
         self.idx = self.idx(X)
         self.idx.is_trained = True
     
-    def _search(self, x, k=None):
-        return self.idx.query(x)
+    def _search(self, y, k):
+        I, D = self.idx.query(y, k=k)
+        return D,I
+
+    def _search_self(self):
+        I, D = self.idx.neighbor_graph
+        return KnnResult(self.ids.values(), D, I, self.ids)
+
 
     def knn_search(self, y: TcrCollection=None):
         """
@@ -134,7 +142,7 @@ class PynndescentIndex(BaseIndex):
             data added to the index, which is much faster.
         """
         if not y:
-            return self.idx.neighbor_graph
+            return self._search_self()
         return super().knn_search(y)
     
 
@@ -241,6 +249,14 @@ class KnnResult:
         s, k = self.D.shape
         return f"k-nearest neighbours result (k={k}, size={s})"
 
+    def _extract_neighbours(self, cdr3:str):
+        try:
+            i = self.y_idx[cdr3]
+        except KeyError:
+            raise KeyError(f"{cdr3} was not part of your query")
+        I_ = np.vectorize(self._annotate_id)(self.I[i])
+        return i, I_
+
     def extract_neighbours(self, cdr3: str) -> List[Tuple[str, float]]:
         """
         Query the KnnResult for neighbours of a specific sequence.
@@ -255,15 +271,34 @@ class KnnResult:
         List[(str, float)]
             List of matches, containing (sequence, score) tuples.
         """
-        try:
-            i = self.y_idx[cdr3]
-        except KeyError:
-            raise KeyError(f"{cdr3} was not part of your query")
-        I_ = np.vectorize(self._annotate_id)(self.I[i])
+        i, I_ = self._extract_neighbours(cdr3)
         return list(zip(I_, self.D[i]))
+
+    def extract_neighbour_sequences(self, cdr3:str) -> List[str]:
+        return self._extract_neighbours(cdr3)[1]
 
     def _annotate_id(self, cdr3_id):
         return self.ids.get(cdr3_id)
+
+    def _refine_edges_iterator(self, distance_function, threshold):
+        for s1 in self.y_idx.keys():
+            seqs = self.extract_neighbour_sequences(s1)
+            for match in ((s1, s2, dist) for s2 in seqs if (dist := distance_function(s1, s2)) <= threshold):
+                yield match
+
+    def refine(self, distance_function:Callable, threshold:float) -> pd.DataFrame:
+        """
+        Perform a second round refinement of k-nearest neighbour matches, using a custom distance function and threshold.
+
+        Parameters:
+        distance_function : Callable,
+            A function taking in two string arguments, returning the distance between the sequences.
+        threshold : float
+            Only sequence pairs at or below this distance are retained.
+        """
+        df = pd.DataFrame(self._refine_edges_iterator(distance_function, threshold))
+        df.columns = ["query_cdr3", "match_cdr3", "distance"]
+        return df
 
     def as_network(self, max_edge: float = 15):
         raise NotImplementedError()

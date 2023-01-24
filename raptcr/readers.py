@@ -78,5 +78,43 @@ def read_OLGA(filepath: str) -> Repertoire:
     df.columns = ["junction_aa", "v_call", "j_call"]
     return Repertoire(df)
 
+def read_vdjdb(filepath:str, filter_TRB:bool = True, filter_human : bool = True, exclude_10x:bool=False, exclude_studies:list=[]) -> Repertoire:
+    """
+    Read the vdjdb.slim.txt file into a Repertoire object
+
+    Parameters
+    ----------
+    filepath : str
+        Location of the vdjdb database file.
+    filter_TRB : bool, default = True
+        Retain only TRB sequences.
+    filter_human : bool, default = True
+        Retain only human-derived sequences.
+    exclude_10x : bool, optional
+        Exclude sequence annotations derived only from the 10X genomics "A new way of exploring immunity" study.
+    exclude_studies : list, optional
+        List containing reference_ids of other studies to exclude.
+    """
+    df =  pd.read_csv(filepath, sep="\t")
+    df.columns = df.columns.str.replace(".", "_", regex=False)
+
+    if exclude_10x:
+        exclude_studies.append('https://www.10xgenomics.com/resources/application-notes/a-new-way-of-exploring-immunity-linking-highly-multiplexed-antigen-recognition-to-immune-repertoire-and-phenotype/#')
+
+    query_filter = '(reference_id not in @exclude_studies)'
+    if filter_TRB:
+        query_filter += ' and (gene == "TRB")'
+    if filter_human:
+        query_filter += ' and (species == "HomoSapiens")'
+
+    df = (
+        df
+        .query(query_filter)
+        .rename({"v_segm":"v_call", "j_segm":"j_call", "cdr3":"junction_aa"}, axis="columns")
+        )
+
+    return Repertoire(df)
+
+
 def read_clustcr(filepath: str) -> Repertoire:
     raise NotImplementedError()

@@ -30,7 +30,7 @@ def positional_encoding(sequence_len:int, m:int, p=3) -> np.ndarray:
     return pow_cos_distances
 
 class Cdr3Hasher(BaseEstimator, TransformerMixin):
-    def __init__(self, distance_matrix, m:int=16, p:float=10, position_weight:float=1.0, trim_left:int=0, trim_right:int=0) -> None:
+    def __init__(self, distance_matrix:np.ndarray=DEFAULT_DM, m:int=32, p:float=9, trim_left:int=0, trim_right:int=0) -> None:
         """
         Locality-sensitive hashing for amino acid sequences. Hashes CDR3
         sequences of varying lengths into m-dimensional vectors, preserving
@@ -38,10 +38,19 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
 
         Parameters
         ----------
+        distance_matrix : np.ndarray[20,20]
+            Twenty by twenty matrix containing AA distances. Amino acids are ordered alphabetically  (see AALPHABET constant)
+        m : int
+            Number of embedding dimensions.
+        p : int
+            Positional importance scaling factor.
+        trim_left : int
+            Number of amino acids trimmed from left side of sequence.
+        trim_right : int
+            Number of amino acids trimmed from right side of sequence.
         """
-        self.m = m
         self.distance_matrix = distance_matrix
-        self.position_weight = position_weight
+        self.m = m
         self.p = p
         self.trim_left = trim_left
         self.trim_right = trim_right
@@ -59,7 +68,7 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
         Create dictionary containing AA's and their corresponding hashes, of
         type str : np.ndarray[m].
         """
-        vecs = MDS(n_components=self.m, dissimilarity="precomputed", random_state=11).fit_transform(self.distance_matrix)
+        vecs = MDS(n_components=self.m, dissimilarity="precomputed", random_state=11, normalized_stress=False).fit_transform(self.distance_matrix)
         vecs_dict = {aa:vec for aa,vec in zip(AALPHABET, vecs)}
         return vecs_dict
 
@@ -75,8 +84,7 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
         position_vectors = dict()
         for cdr3_length in range(1,50): # maximum hashable sequence length = 50
             vector = positional_encoding(cdr3_length, self.m, self.p)
-            scaled_vector = 1 + self.position_weight*(vector-1)
-            position_vectors[cdr3_length] = scaled_vector
+            position_vectors[cdr3_length] = vector
         return position_vectors
 
     def _pool(self, aa_vectors:np.ndarray, position_vectors:np.ndarray) -> np.ndarray:

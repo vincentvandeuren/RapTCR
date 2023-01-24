@@ -297,7 +297,7 @@ class KnnResult:
             Only sequence pairs at or below this distance are retained.
         """
         df = pd.DataFrame(self._refine_edges_iterator(distance_function, threshold))
-        if not df.empty():
+        if not df.empty:
             df.columns = ["query_cdr3", "match_cdr3", "distance"]
         return df
 

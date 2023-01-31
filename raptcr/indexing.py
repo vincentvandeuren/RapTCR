@@ -216,7 +216,6 @@ class FastApproximateIndex(BaseApproximateIndex):
 
         Parameters
         ----------
-
         hasher : Cdr3Hasher
             Fitted hasher object to transform CDR3 to vectors.
         n_centroids : int, default=32
@@ -244,10 +243,12 @@ class KnnResult:
         self.I = I
         self.y_idx = {y: i for i, y in enumerate(y)}
         self.ids = ids
+        query_size, k = D.shape
+        self.query_size = query_size
+        self.k = k
 
     def __repr__(self) -> str:
-        s, k = self.D.shape
-        return f"k-nearest neighbours result (k={k}, size={s})"
+        return f"k-nearest neighbours result (size={self.query_size}, k={self.k})"
 
     def _extract_neighbours(self, cdr3:str):
         try:
@@ -286,7 +287,10 @@ class KnnResult:
             for match in ((s1, s2, dist) for s2 in seqs if (dist := distance_function(s1, s2)) <= threshold):
                 yield match
 
-    def refine(self, distance_function:Callable, threshold:float) -> pd.DataFrame:
+    def _iter_edges(self):
+        pass
+
+    def refine(self, distance_function:Callable, threshold:float, k:int=None) -> pd.DataFrame:
         """
         Perform a second round refinement of k-nearest neighbour matches, using a custom distance function and threshold.
 
@@ -295,10 +299,14 @@ class KnnResult:
             A function taking in two string arguments, returning the distance between the sequences.
         threshold : float
             Only sequence pairs at or below this distance are retained.
+        k : int, optional
+            Only the k closest matches for each query sequence are retained, if below the threshold.
         """
         df = pd.DataFrame(self._refine_edges_iterator(distance_function, threshold))
         if not df.empty:
             df.columns = ["query_cdr3", "match_cdr3", "distance"]
+        if k:
+            df = df.sort_values('distance').groupby("query_cdr3", sort=False).head(k).sort_index()
         return df
 
     def as_network(self, max_edge: float = 15):

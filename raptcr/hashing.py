@@ -4,7 +4,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.manifold import MDS
 from typing import Union
 
-from .analysis import TcrCollection, Repertoire, Cluster
+from .analysis import TcrCollection, Repertoire, Cluster, ClusteredRepertoire
 from .constants.base import AALPHABET
 from .constants.hashing import DEFAULT_DM
 
@@ -54,6 +54,9 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
         self.p = p
         self.trim_left = trim_left
         self.trim_right = trim_right
+
+    def __repr__(self):
+        return f'Cdr3Hasher(m={self.m})'
 
     def fit(self, X=None, y=None):
         """
@@ -151,10 +154,11 @@ class Cdr3Hasher(BaseEstimator, TransformerMixin):
             Array containing m-dimensional hashes for each of the n provided inputs.
         """
         check_is_fitted(self)
-        match X:
-            case Repertoire() | list() | np.ndarray():
-                return np.array([self.transform(s) for s in X]).astype(np.float32)
-            case Cluster():
-                return self._hash_collection(X)
-            case _:
-                return self._hash_cdr3(X)
+        if isinstance(X, (Repertoire, list, np.ndarray)):
+            return np.array([self.transform(s) for s in X]).astype(np.float32)
+        elif isinstance(X, Cluster):
+            return self._hash_collection(X)
+        elif isinstance(X, ClusteredRepertoire):
+            return np.vstack([self.transform(s) for s in X]).astype(np.float32)
+        else:
+            return self._hash_cdr3(X)

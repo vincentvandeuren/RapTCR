@@ -38,20 +38,25 @@ def read_AIRR(
         "duplicate_count",
         "junction_aa",
     ]
-    df = pd.read_csv(filepath, sep="\t", usecols=cols)
-    df = df.set_index("sequence_id")
+
+    available_cols = pd.read_csv("data/P1_15.tsv", sep="\t", nrows=0).columns.to_list()
+    if all([col in available_cols for col in cols]):
+        df = pd.read_csv(filepath, sep="\t", usecols=cols)
+    else:
+        df = pd.read_csv(filepath, sep="\t", usecols=available_cols)
+
+    if "sequence_id" in df:
+        df = df.set_index("sequence_id")
 
     if "productive" in df:
         if df["productive"].dtype == "O":
             df["productive"] = df["productive"] == "T"
 
-    if filter_productive:
-        df = df.query("productive == True")
+        if filter_productive:
+            df = df.query("productive == True")
 
     if filter_min_duplicate_count:
         df = df.query(f"duplicate_count > {filter_min_duplicate_count}")
-
-    df = df.drop("productive", axis=1)
 
     if filter_TRB:
         df = df.query('v_call.str.contains("TRB") or j_call.str.contains("TRB")')

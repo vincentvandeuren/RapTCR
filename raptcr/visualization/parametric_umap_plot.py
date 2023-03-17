@@ -15,8 +15,8 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import seaborn as sns
 from scipy.stats import gaussian_kde
 from scipy.stats.mstats import winsorize
-from .hashing import Cdr3Hasher
-from .analysis import TcrCollection
+from raptcr.hashing import Cdr3Hasher
+from raptcr.analysis import TcrCollection
 
 
 class ParametricUmapTransformer:
@@ -52,6 +52,9 @@ class ParametricUmapTransformer:
         """
         hashes = self.hasher.transform(data_train)
         self.pumap.fit(hashes)
+        self.encoder = self.pumap.encoder
+        del self.pumap
+
 
     def transform(self, data: TcrCollection):
         """
@@ -167,16 +170,22 @@ class ParametricUmapPlotter:
             else:
                 vmin = min(winsorize(self.df['relative_density_0.05'], limits=(0.01,0.01)))
                 vmax = max(winsorize(self.df['relative_density_0.05'], limits=(0.01,0.01)))
-            match norm:
-                case "log": norm_ = LogNorm(vmin=vmin, vmax=vmax)
-                case "log2": norm_ = FuncNorm(functions=(np.log2, lambda x: 2**x))
-                case "symlog": norm_ = SymLogNorm(linthresh=0.3, linscale=0.3, vmin=vmin, vmax=vmax, base=10)
-                case "symlog2": norm_ = SymLogNorm(linthresh=0.3, linscale=0.3, vmin=vmin, vmax=vmax, base=2)
-                case _: norm_ = Normalize(vmin=vmin, vmax=vmax)
 
-            match norm:
-                case ("symlog" | "symlog2"): cmap_ = "RdBu_r"
-                case _: cmap_ = sns.color_palette("rocket_r", as_cmap=True)
+            if norm == "log":
+                norm_ = LogNorm(vmin=vmin, vmax=vmax)
+            elif norm == "log2":
+                norm_ = FuncNorm(functions=(np.log2, lambda x: 2**x))
+            elif norm == "symlog":
+                norm_ = SymLogNorm(linthresh=0.3, linscale=0.3, vmin=vmin, vmax=vmax, base=10)
+            elif norm == "symlog2":
+                norm_ = SymLogNorm(linthresh=0.3, linscale=0.3, vmin=vmin, vmax=vmax, base=2)
+            else:
+                norm_ = Normalize(vmin=vmin, vmax=vmax)
+
+            if norm in ["symlog", "symlog2"]:
+                cmap_ = "RdBu_r"
+            else:
+                cmap_ = sns.color_palette("rocket_r", as_cmap=True) 
 
             sm = ScalarMappable(norm=norm_, cmap=cmap_)
 
@@ -217,15 +226,7 @@ class ParametricUmapPlotter:
         Parses input color feature, computes and adds column to self.df for
         specific features where a function is available.
         """
-        match color_feature.split('_'):
-            case ["relative", "density", bw]:
-                try : 
-                    bw = float(bw)
-                except ValueError:
-                    pass
-                self.df[color_feature] = self._relative_density(bw)
-            case ["clustcr", "cluster"]:
-                self.df[color_feature] = self._clustcr_cluster()
+        return NotImplementedError
 
     def _relative_density(self, bw=None) -> pd.Series:
         """

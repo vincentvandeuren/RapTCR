@@ -6,7 +6,7 @@ import colorcet as cc
 import numpy as np
 import pandas as pd
 from umap import ParametricUMAP
-from umap.parametric_umap import load_ParametricUMAP
+import tensorflow as tf
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.cm import ScalarMappable
@@ -32,11 +32,7 @@ class ParametricUmapTransformer:
             Keyword arguments passed to `ParametricUMAP()` constructor.
         """
         self.hasher = hasher
-        self.pumap = ParametricUMAP(
-            verbose=True,
-            n_training_epochs=kwargs.pop("n_training_epochs", 10),
-            **kwargs
-        )
+        self.pumap_kwargs = kwargs
 
     def __repr__(self) -> str:
         return "Parametric UMAP visualization"
@@ -51,9 +47,14 @@ class ParametricUmapTransformer:
             TcrCollection of training data.
         """
         hashes = self.hasher.transform(data_train)
-        self.pumap.fit(hashes)
-        self.encoder = self.pumap.encoder
-        del self.pumap
+        pumap = ParametricUMAP(
+                verbose=True,
+                n_training_epochs=self.pumap_kwargs.pop("n_training_epochs", 10),
+                **self.pumap_kwargs
+            )
+        pumap.fit(hashes)
+        self.umap_encoder = pumap.encoder
+        del pumap
 
 
     def transform(self, data: TcrCollection):
@@ -71,7 +72,7 @@ class ParametricUmapTransformer:
             Data with "x" and "y" fields representing UMAP coordinates.
         """
         hashes = self.hasher.transform(data)
-        embedding = self.pumap.transform(hashes)
+        embedding = self.umap_encoder.predict(hashes, batch_size=1000, verbose=True)
         data.data["x"], data.data["y"] = embedding.T
         return data.to_df()
 
@@ -86,10 +87,10 @@ class ParametricUmapTransformer:
             Path and name of folder where model is stored.
         """
         filepath = Path(filepath)
-        pumap = load_ParametricUMAP(filepath / "ParametricUMAP")
         hasher = joblib.load(filepath / "Cdr3Hasher.joblib")
+        encoder = tf.keras.models.load_model(filepath / "encoder", compile=False)
         res = cls(hasher)
-        res.pumap = pumap
+        res.umap_encoder = encoder
         return res
 
     def save(self, filepath: str):
@@ -102,7 +103,7 @@ class ParametricUmapTransformer:
             Filepath and name of folder to save model in.
         """
         filepath = Path(filepath)
-        self.pumap.save(filepath / "ParametricUMAP")
+        self.umap_encoder.save(filepath / "encoder")
         joblib.dump(self.hasher, filename=filepath / "Cdr3Hasher.joblib")
 
 

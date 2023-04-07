@@ -10,7 +10,7 @@ from .constants.hashing import DEFAULT_DM
 
 from sklearn.utils.validation import check_is_fitted
 
-def positional_encoding(sequence_len:int, m:int, p=3) -> np.ndarray:
+def positional_encoding(sequence_len:int, m:int, p=4) -> np.ndarray:
     """
     Generate positional encoding based on sinus and cosinus functions with
     geometrically increasing wavelenghts.
@@ -30,7 +30,7 @@ def positional_encoding(sequence_len:int, m:int, p=3) -> np.ndarray:
     return pow_cos_distances
 
 class Cdr3Hasher(BaseEstimator, TransformerMixin):
-    def __init__(self, distance_matrix:np.ndarray=DEFAULT_DM, m:int=32, p:float=9, trim_left:int=0, trim_right:int=0) -> None:
+    def __init__(self, distance_matrix:np.ndarray=DEFAULT_DM, m:int=64, p:float=4, trim_left:int=0, trim_right:int=0) -> None:
         """
         Locality-sensitive hashing for amino acid sequences. Hashes CDR3
         sequences of varying lengths into m-dimensional vectors, preserving

@@ -83,7 +83,7 @@ def read_OLGA(filepath: str) -> Repertoire:
     df.columns = ["junction_aa", "v_call", "j_call"]
     return Repertoire(df)
 
-def read_vdjdb(filepath:str, filter_TRB:bool = True, filter_human : bool = True, exclude_10x:bool=False, exclude_studies:list=[]) -> Repertoire:
+def read_vdjdb(filepath:str, filter_TRB:bool = True, filter_human : bool = True, exclude_10x:bool=False, exclude_studies:list=[], min_score:int=None) -> Repertoire:
     """
     Read the vdjdb.slim.txt file into a Repertoire object
 
@@ -99,6 +99,8 @@ def read_vdjdb(filepath:str, filter_TRB:bool = True, filter_human : bool = True,
         Exclude sequence annotations derived only from the 10X genomics "A new way of exploring immunity" study.
     exclude_studies : list, optional
         List containing reference_ids of other studies to exclude.
+    min_score : int, optional
+        Minimum VDJDB score to be included.
     """
     df =  pd.read_csv(filepath, sep="\t")
     df.columns = df.columns.str.replace(".", "_", regex=False)
@@ -111,6 +113,8 @@ def read_vdjdb(filepath:str, filter_TRB:bool = True, filter_human : bool = True,
         query_filter += ' and (gene == "TRB")'
     if filter_human:
         query_filter += ' and (species == "HomoSapiens")'
+    if min_score:
+        query_filter += f' and (vdjdb_score >= {min_score})'
 
     df = (
         df

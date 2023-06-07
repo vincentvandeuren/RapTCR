@@ -24,7 +24,7 @@ class MstTransformer(TransformerMixin):
         return self
 
     def transform(self, X:ClusteredRepertoire, y=None):
-        cluster_id_list = {i:c for i,c in enumerate([c for c in X.iter_clusters()])}
+        cluster_id_list = {i:c for i,c in enumerate([c for c in X.iter_clusters()])} # todo
         vertex_count = len(cluster_id_list)
         clusters = list(cluster_id_list.values())
         idx = self.idx.add(clusters)

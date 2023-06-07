@@ -22,8 +22,6 @@ class UmapTransformer(TransformerMixin):
             Fitted hasher object.
         umap : UMAP
             Fitted umap transformer.
-        **kwargs
-            Keyword arguments passed to `ParametricUMAP()` constructor.
         """
         if not umap:
             umap = UMAP(
@@ -128,7 +126,7 @@ def plot_umap(df:pd.DataFrame, ax:Axes=None, hue:str=None, **kwargs) -> Axes:
     return ax
 
 
-def plot_interactive_umap(filename:str, df, color, **kwargs) -> None:
+def plot_interactive_umap(filename:str, df, color=None, **kwargs) -> None:
     """
     Plot an interactive scatterplot of the UMAP transformation using plotly. 
     The resulting html can be opened in a browser.
@@ -142,12 +140,14 @@ def plot_interactive_umap(filename:str, df, color, **kwargs) -> None:
     **kwargs
         Other keyword params passed to a px.scatter function, i.e. size, transparency.
     """
+    if color:
+        kwargs["color"] = color
+        df = df.sort_values(by=color, key=natsort.natsort_keygen(alg=natsort.ns.REAL))
 
     fig = px.scatter(
-        df.sort_values(by=color, key=natsort.natsort_keygen(alg=natsort.ns.REAL)), 
+        df, 
         x="x", 
         y="y", 
-        color = color,
         hover_name="junction_aa", 
         hover_data=df.columns.to_list(), 
         **kwargs

@@ -54,7 +54,7 @@ class ParametricUmapTransformer:
             )
         pumap.fit(hashes)
         self.umap_encoder = pumap.encoder
-        del pumap
+        del pumap 
 
 
     def transform(self, data: TcrCollection):

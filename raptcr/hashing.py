@@ -3,11 +3,12 @@ from typing import Union, Tuple
 from abc import ABC
 
 import numpy as np
+import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.manifold import MDS
 from sklearn.utils.validation import check_is_fitted
 
-from .analysis import Cluster, ClusteredRepertoire, Repertoire, TcrCollection
+from .analysis import Repertoire
 from .constants.base import AALPHABET
 from .constants.hashing import DEFAULT_DM
 
@@ -142,8 +143,7 @@ class Cdr3Embedder(BaseEstimator, TransformerMixin, BaseCdr3Embedder):
         super().__init__(aa_dims, pos_dims, distance_matrix, n_rotations, p, trim_left, trim_right)
 
     def __repr__(self):
-        m = self.aa_dims * self.pos_dims
-        return f"Cdr3Embedder(m={m})"
+        return f"Cdr3Embedder(m={self.m})"
 
     def fit(self, X=None, y=None):
         """
@@ -153,7 +153,11 @@ class Cdr3Embedder(BaseEstimator, TransformerMixin, BaseCdr3Embedder):
         self.position_vectors_ = self._construct_position_vectors()
         return self
 
-    def transform(self, X: Union[TcrCollection, list, str], y=None) -> np.array:
+    @property
+    def m(self):
+        return (self.aa_dims * self.pos_dims)
+
+    def transform(self, X: Union[Repertoire, list, str], y=None) -> np.array:
         """
         Generate CDR3 embeddings.
 
@@ -171,12 +175,14 @@ class Cdr3Embedder(BaseEstimator, TransformerMixin, BaseCdr3Embedder):
         check_is_fitted(self)
         if isinstance(X, str):
             return self._embed_sequence(self._trim_sequence(X))
-        elif isinstance(X, (Repertoire, list, np.ndarray)):
+        elif isinstance(X, (list, np.ndarray)):
             return np.array([self.transform(s) for s in X]).astype(np.float32)
-        elif isinstance(X, Cluster):
-            return self._hash_collection(X)
-        elif isinstance(X, ClusteredRepertoire):
-            return np.vstack([self.transform(s) for s in X]).astype(np.float32)
+        elif isinstance(X, (Repertoire, pd.DataFrame)):
+            return np.array([self.transform(s) for s in X.cdr3s]).astype(np.float32)
+        # elif isinstance(X, Cluster):
+        #     return self._hash_collection(X)
+        # elif isinstance(X, ClusteredRepertoire):
+        #     return np.vstack([self.transform(s) for s in X]).astype(np.float32)
         else:
             raise ValueError("Incorrect type")
         
@@ -205,7 +211,7 @@ class PairedChainCdr3Embedder(BaseEstimator, TransformerMixin):
 
     def __repr__(self) -> str:
         m_a = self.alpha_embedder.aa_dims * self.alpha_embedder.pos_dims
-        m_b = self.beta_embedder.aa_dims * self.beta_embedder.pos_dims
+        m_b = self.beta_embedder.aa_dims * self.beta_embedder.pos_dims______
         return f"PairedChainCdr3Embedder(m_alpha={m_a}, m_beta={m_b})"
     
 
@@ -237,12 +243,11 @@ class PairedChainCdr3Embedder(BaseEstimator, TransformerMixin):
             self.beta_embedder.transform(beta_sequence)
         ])
     
-    def transform(self, X: Union[TcrCollection, np.ndarray, Tuple[str,str]], y=None):
+    def transform(self, X: Union[Repertoire, np.ndarray, Tuple[str,str]], y=None):
         if isinstance(X, Tuple):
             return self._embed_sequence(*X)
         if isinstance(X, list):
             X = np.array(X)
-        
         if isinstance(X, np.ndarray):
             if X.shape[1] == 2:
                 return np.array([self.transform(tuple(t)) for t in X])

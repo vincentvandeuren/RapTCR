@@ -90,13 +90,14 @@ def read_vdjdb(filepath:str, filter_TRB:bool = True, filter_human : bool = True,
     Parameters
     ----------
     filepath : str
-        Location of the vdjdb database file.
+        Location of the vdjdb `vdjdb.slim.txt` database file. 
     filter_TRB : bool, default = True
         Retain only TRB sequences.
     filter_human : bool, default = True
         Retain only human-derived sequences.
     exclude_10x : bool, optional
-        Exclude sequence annotations derived only from the 10X genomics "A new way of exploring immunity" study.
+        Exclude sequence annotations derived only from the 10X genomics "A new
+        way of exploring immunity" study.
     exclude_studies : list, optional
         List containing reference_ids of other studies to exclude.
     min_score : int, optional

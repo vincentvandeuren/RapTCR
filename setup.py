@@ -13,7 +13,7 @@ requirements = [
     "umap-learn",
     "tensorflow",
     "colorcet",
-    "faiss-cpu",
+    "faiss-gpu",
 ]
 
 setup(

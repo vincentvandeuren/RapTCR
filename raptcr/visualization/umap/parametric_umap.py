@@ -15,18 +15,18 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import seaborn as sns
 from scipy.stats import gaussian_kde
 from scipy.stats.mstats import winsorize
-from raptcr.hashing import Cdr3Hasher
-from raptcr.analysis import TcrCollection
+from raptcr.hashing import Cdr3Embedder
+from raptcr.analysis import Repertoire
 
 
 class ParametricUmapTransformer:
-    def __init__(self, hasher: Cdr3Hasher, **kwargs) -> None:
+    def __init__(self, hasher: Cdr3Embedder, **kwargs) -> None:
         """
         Initiate Parametric Umap Transformer.
 
         Parameters
         ----------
-        hasher : Cdr3Hasher
+        hasher : Cdr3Embedder
             Fitted hasher object.
         **kwargs
             Keyword arguments passed to `ParametricUMAP()` constructor.
@@ -37,13 +37,13 @@ class ParametricUmapTransformer:
     def __repr__(self) -> str:
         return "Parametric UMAP visualization"
 
-    def fit(self, data_train: TcrCollection):
+    def fit(self, data_train: Repertoire):
         """
         Train the UMAP using a train dataset.
 
         Parameters
         ----------
-        data_train : TcrCollection
+        data_train : Repertoire
             TcrCollection of training data.
         """
         hashes = self.hasher.transform(data_train)
@@ -57,14 +57,14 @@ class ParametricUmapTransformer:
         del pumap 
 
 
-    def transform(self, data: TcrCollection):
+    def transform(self, data: Repertoire):
         """
         Use trained UMAP model to generate 2D coordinates from TCR sequences.
 
         Parameters
         ----------
-        data : TcrCollection
-            TcrCollection of training data.
+        data : Repertoire
+            Repertoire of training data.
 
         Returns
         -------
@@ -87,7 +87,7 @@ class ParametricUmapTransformer:
             Path and name of folder where model is stored.
         """
         filepath = Path(filepath)
-        hasher = joblib.load(filepath / "Cdr3Hasher.joblib")
+        hasher = joblib.load(filepath / "Cdr3Embedder.joblib")
         encoder = tf.keras.models.load_model(filepath / "encoder", compile=False)
         res = cls(hasher)
         res.umap_encoder = encoder
@@ -104,7 +104,7 @@ class ParametricUmapTransformer:
         """
         filepath = Path(filepath)
         self.umap_encoder.save(filepath / "encoder")
-        joblib.dump(self.hasher, filename=filepath / "Cdr3Hasher.joblib")
+        joblib.dump(self.hasher, filename=filepath / "Cdr3Embedder.joblib")
 
 
 class ParametricUmapPlotter:

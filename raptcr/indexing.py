@@ -1,14 +1,16 @@
 from abc import ABC
-from functools import partial
+from functools import partial, cached_property
 from typing import List, Tuple, Callable
+import time
 
 import faiss
-from pynndescent import NNDescent
 import numpy as np
 import pandas as pd
 
-from .hashing import Cdr3Hasher
-from .analysis import TcrCollection
+from raptcr.analysis import Repertoire
+
+from .hashing import Cdr3Embedder
+from .analysis import Repertoire
 
 
 class BaseIndex(ABC):
@@ -16,11 +18,12 @@ class BaseIndex(ABC):
     Abstract structure for an index, supports adding CDR3s and searching them.
     """
 
-    def __init__(self, idx: faiss.Index, hasher: Cdr3Hasher) -> None:
+    def __init__(self, idx: faiss.Index, embedder: Cdr3Embedder) -> None:
         super().__init__()
         self.idx = idx
-        self.hasher = hasher
-        self.ids = {}
+        self.embedder = embedder
+        self.ids = np.array([])
+        self.rep = None
 
     def _add_hashes(self, hashes):
         if not self.idx.is_trained:
@@ -28,22 +31,29 @@ class BaseIndex(ABC):
         self.idx.add(hashes)
 
     def _add_ids(self, X):
-        for i, x in enumerate(X):
-            self.ids[i] = x
+        self.ids = np.hstack((self.ids, list(X)))
 
-    def add(self, X: TcrCollection):
+    def _add_repertoire(self, X):
+        if self.rep is None:
+            self.rep = X
+        else:
+            self.rep = pd.concat([self.rep, X])
+
+    def add(self, X: Repertoire):
         """
         Add sequences to the index.
 
         Parameters
         ----------
-        X : TcrCollection
+        X : Repertoire
             Collection of TCRs to add. Can be a Repertoire, list of Clusters, or
             list of str.
         """
-        hashes = self.hasher.transform(X).astype(np.float32)
+        hashes = self.embedder.transform(X).astype(np.float32)
         self._add_hashes(hashes)
         self._add_ids(X)
+        if isinstance(X, Repertoire):
+            self._add_repertoire(X)
         return self
 
     def _assert_trained(self):
@@ -53,13 +63,13 @@ class BaseIndex(ABC):
     def _search(self, x, k):
         return self.idx.search(x=x, k=k)
 
-    def knn_search(self, y: TcrCollection, k: int = 100):
+    def knn_search(self, y: Repertoire, k: int = 100):
         """
         Search index for k-nearest neighbours.
 
         Parameters
         ----------
-        y : TcrCollection
+        y : Repertoire
             Query TCRs.
         k : int, default = 100
             Number of nearest neighbours to search.
@@ -70,9 +80,21 @@ class BaseIndex(ABC):
             `KnnResult` object.
         """
         self._assert_trained()
-        hashes = self.hasher.transform(y).astype(np.float32)
+        hashes = self.embedder.transform(y).astype(np.float32)
         D, I = self._search(x=hashes, k=k)
         return KnnResult(y, D, I, self.ids)
+    
+    def _radius_search(self, x, d):
+        radius = d**2
+        lims, D, I = self.idx.range_search(x, radius)
+        return lims, np.sqrt(D), I
+        
+    def radius_search(self, query:Repertoire, dist:float) -> pd.DataFrame:
+        hashes = self.embedder.transform(query)
+
+        lims, D, I = self._radius_search(hashes, dist)
+
+        return RadiusSearchResult(lims, D, I, query, self.ids, dist, self.rep)
 
 
 class FlatIndex(BaseIndex):
@@ -80,17 +102,91 @@ class FlatIndex(BaseIndex):
     Exact search for euclidean hash distance.
     """
 
-    def __init__(self, hasher: Cdr3Hasher) -> None:
+    def __init__(self, embedder: Cdr3Embedder) -> None:
         """
         Initialize index.
 
         Parameters
         ----------
-        hasher : Cdr3Hasher
-            Fitted Cdr3Hasher class.
+        embedder : Cdr3Embedder
+            Fitted Cdr3Embedder class.
         """
-        idx = faiss.IndexFlatL2(hasher.m)
-        super().__init__(idx, hasher)
+        idx = faiss.IndexFlatL2(embedder.m)
+        super().__init__(idx, embedder)
+
+class FlatGpuIndex(BaseIndex):
+    """
+    Exact search for euclidean hash distance.
+    """
+
+    def __init__(self, embedder: Cdr3Embedder) -> None:
+        """
+        Initialize index.
+
+        Parameters
+        ----------
+        embedder : Cdr3Embedder
+            Fitted Cdr3Embedder class.
+        """
+        idx_cpu = faiss.IndexFlatL2(embedder.m)
+        try:
+            self.resource = faiss.StandardGpuResources()
+        except ImportError:
+            raise("Faiss-gpu was not installed.")
+        idx_gpu = faiss.GpuIndexFlatL2(self.resource, idx_cpu)
+        self.idx_cpu = idx_cpu
+        self.gpu_k = 2048
+        super().__init__(idx_gpu, embedder)
+
+    def add(self, X: Repertoire):
+        hashes = self.embedder.transform(X).astype(np.float32)
+        self.idx_cpu.add(hashes)
+        self._add_hashes(hashes)
+        self._add_ids(X)
+        if isinstance(X, Repertoire):
+            self._add_repertoire(X)
+        return self
+    def deallocate(self):
+        """
+        Deallocate index from GPU memory.
+        """
+        self.resource.noTempMemory()
+        return self
+    
+    def _radius_search(self, x, d):
+        """
+        Radius search is not implemented for GPU indices. Hence, we perform a
+        knn search with a fairly high k, and fall back on the cpu radius search
+        if there are queries for which the furthest neighbor < radius.
+        """
+        radius = d**2 #faiss distances are squared
+        k = min(self.idx.ntotal, self.gpu_k) # k for GPU knns, max supported is 2048
+
+        # perform knn gpu search
+        D, I = self.idx.search(x, k)
+
+        # fall back on cpu radius search if not all neighbors<radius were in knn result
+        mask = D[:, k - 1] < radius
+        if mask.sum() > 0: # not all neighbors < radius in knn result
+            lim_remain, D_remain, I_remain = self.idx_cpu.range_search(x[mask], radius)
+
+        # merge results
+        D_res, I_res = [], []
+        nr = 0
+        for i in range(len(x)):
+            if not mask[i]:
+                nv = (D[i, :] < radius).sum()
+                D_res.append(D[i, :nv])
+                I_res.append(I[i, :nv])
+            else:
+                l0, l1 = lim_remain[nr], lim_remain[nr + 1]
+                D_res.append(D_remain[l0:l1])
+                I_res.append(I_remain[l0:l1])
+                nr += 1
+        lims = np.cumsum([0] + [len(di) for di in D_res])
+        D_res = np.hstack(D_res)
+        I_res = np.hstack(I_res)
+        return lims, np.sqrt(D_res), I_res 
 
 
 class PynndescentIndex(BaseIndex):
@@ -100,7 +196,7 @@ class PynndescentIndex(BaseIndex):
 
     def __init__(
         self,
-        hasher: Cdr3Hasher,
+        embedder: Cdr3Embedder,
         k: int = 100,
         diversify_prob: float = 1.0,
         pruning_degree_multiplier: float = 1.5,
@@ -108,6 +204,8 @@ class PynndescentIndex(BaseIndex):
         """
         Initialize index.
         """
+        from pynndescent import NNDescent
+
         idx = partial(
             NNDescent,
             n_neighbors=k,
@@ -115,15 +213,15 @@ class PynndescentIndex(BaseIndex):
             pruning_degree_multiplier=pruning_degree_multiplier,
         )
         idx.is_trained = True
-        super().__init__(idx, hasher)
+        super().__init__(idx, embedder)
 
 
     def _add_hashes(self, X):
         self.idx = self.idx(X)
         self.idx.is_trained = True
     
-    def _search(self, y, k):
-        I, D = self.idx.query(y, k=k)
+    def _search(self, x, k):
+        I, D = self.idx.query(x, k=k)
         return D,I
 
     def _search_self(self):
@@ -131,13 +229,13 @@ class PynndescentIndex(BaseIndex):
         return KnnResult(self.ids.values(), D, I, self.ids)
 
 
-    def knn_search(self, y: TcrCollection=None):
+    def knn_search(self, y: Repertoire=None):
         """
         Search index for nearest neighbours.
 
         Parameters
         ----------
-        y : TcrCollection, optional
+        y : Repertoire, optional
             The query TCRs. If not passed, returns the neighbours within the
             data added to the index, which is much faster.
         """
@@ -163,49 +261,49 @@ class BaseApproximateIndex(BaseIndex):
 
 class IvfIndex(BaseApproximateIndex):
     def __init__(
-        self, hasher: Cdr3Hasher, n_centroids: int = 32, n_probe: int = 5
+        self, embedder: Cdr3Embedder, n_centroids: int = 32, n_probe: int = 5
     ) -> None:
         """
         Inverted file index for approximate nearest neighbour search.
 
         Parameters
         ----------
-        hasher : Cdr3Hasher
-            Fitted hasher object to transform CDR3 to vectors.
+        embedder : Cdr3Embedder
+            Fitted embedder object to transform CDR3 to vectors.
         n_centroids : int, default=32
             Number of centroids for the initial k-means clustering.
         n_probe : int, default=5
             Number of centroids to search at query time. Higher n_probe means
             higher recall, but slower speed.
         """
-        idx = faiss.index_factory(64, f"IVF{n_centroids},Flat")
-        super().__init__(idx, hasher)
+        idx = faiss.index_factory(embedder.m, f"IVF{n_centroids},Flat")
+        super().__init__(idx, embedder)
         self.n_probe = n_probe
 
 
-class HnswIndex:
-    def __init__(self, hasher: Cdr3Hasher, n_links: int = 32) -> None:
+class HnswIndex(BaseIndex):
+    def __init__(self, embedder: Cdr3Embedder, n_links: int = 32) -> None:
         """
         Index based on Hierarchical Navigable Small World networks.
 
         Parameters
         ----------
-        hasher : Cdr3Hasher
-            Fitted hasher object to transform CDR3 to vectors.
+        embedder : Cdr3Embedder
+            Fitted embedder object to transform CDR3 to vectors.
         n_links : int, default=32
             Number of bi-directional links created for each element during index
             construction. Increasing M leads to better recall but higher memory
             size and slightly slower searching.
 
         """
-        idx = faiss.index_factory(64, f"HNSW{n_links},Flat")
-        super().__init__(idx, hasher)
+        idx = faiss.index_factory(embedder.m, f"HNSW{n_links},Flat")
+        super().__init__(idx, embedder)
 
 
 class FastApproximateIndex(BaseApproximateIndex):
     def __init__(
         self,
-        hasher: Cdr3Hasher,
+        embedder: Cdr3Embedder,
         n_centroids: int = 256,
         n_links: int = 32,
         n_probe: int = 10,
@@ -216,8 +314,8 @@ class FastApproximateIndex(BaseApproximateIndex):
 
         Parameters
         ----------
-        hasher : Cdr3Hasher
-            Fitted hasher object to transform CDR3 to vectors.
+        embedder : Cdr3Embedder
+            Fitted embedder object to transform CDR3 to vectors.
         n_centroids : int, default=32
             Number of centroids for the initial k-means clustering.
         n_probe : int, default=5
@@ -228,10 +326,47 @@ class FastApproximateIndex(BaseApproximateIndex):
             construction. Increasing M leads to better recall but higher memory
             size and slightly slower searching.
         """
-        idx = faiss.index_factory(64, f"IVF{n_centroids}_HNSW{n_links},SQ6")
-        super().__init__(idx, hasher)
+        idx = faiss.index_factory(embedder.m, f"IVF{n_centroids}_HNSW{n_links},SQ6")
+        super().__init__(idx, embedder)
         self.n_probe = n_probe
 
+class RadiusSearchResult:
+    """
+    Result of radius search
+    """
+    def __init__(self, lims, D, I, query, ids, radius, rep=None) -> None:
+        self.lims = lims
+        self.D = D
+        self.I = I
+        self.ids = ids
+        self.query = query
+        self.rep = rep
+        self.radius = radius
+
+    def __repr__(self) -> str:
+        return f"radius search result (query_size={len(self.query)}, radius={self.radius})"
+    
+    def to_df(self, add_result_info:bool=True) -> pd.DataFrame:
+
+        res = pd.DataFrame({
+            "query_sequence":list(self.query),
+            "match":[self.ids[self.I[self.lims[i]:self.lims[i+1]]] for i in range(len(self.query))],
+            "match_dist": [self.D[self.lims[i]:self.lims[i+1]] for i in range(len(self.query))],
+        })
+
+        if isinstance(self.query, Repertoire):
+            res.insert(loc=0, column="query_sequence_id", value=self.query["sequence_id"].to_numpy())
+        
+        res = res.explode(["match", 'match_dist']).dropna().reset_index(drop=True)
+
+        if add_result_info and self.rep is not None:
+            index_indices = [self.I[self.lims[i]:self.lims[i+1]] for i in range(len(self.query))]
+            index_indices = [a for b in index_indices for a in b] # indices of index matches
+            res_right = self.rep.iloc[index_indices].reset_index(drop=True)
+            res = pd.concat([res, res_right.add_prefix("match_")], axis="columns")
+
+        return res
+    
 
 class KnnResult:
     """
@@ -241,14 +376,17 @@ class KnnResult:
     def __init__(self, y, D, I, ids) -> None:
         self.D = np.sqrt(D)
         self.I = I
-        self.y_idx = {y: i for i, y in enumerate(y)}
+        self.query = y
         self.ids = ids
-        query_size, k = D.shape
-        self.query_size = query_size
-        self.k = k
+        self.query_size = D.shape[0]
+        self.k = D.shape[1]
 
     def __repr__(self) -> str:
         return f"k-nearest neighbours result (size={self.query_size}, k={self.k})"
+    
+    @cached_property
+    def _query_sequence_set(self) -> set:
+        return set(self.ids)
 
     def _extract_neighbours(self, cdr3:str):
         try:
@@ -287,8 +425,9 @@ class KnnResult:
             for match in ((s1, s2, dist) for s2 in seqs if (dist := distance_function(s1, s2)) <= threshold):
                 yield match
 
-    def _iter_edges(self):
+    def _edges_iterator(self, threshold):
         pass
+
 
     def refine(self, distance_function:Callable, threshold:float, k:int=None) -> pd.DataFrame:
         """

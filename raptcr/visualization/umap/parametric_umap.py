@@ -6,7 +6,7 @@ import colorcet as cc
 import numpy as np
 import pandas as pd
 from umap import ParametricUMAP
-from umap.parametric_umap import load_ParametricUMAP
+import tensorflow as tf
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.cm import ScalarMappable
@@ -15,52 +15,56 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 import seaborn as sns
 from scipy.stats import gaussian_kde
 from scipy.stats.mstats import winsorize
-from .hashing import Cdr3Hasher
-from .analysis import TcrCollection
+from raptcr.hashing import Cdr3Embedder
+from raptcr.analysis import Repertoire
 
 
 class ParametricUmapTransformer:
-    def __init__(self, hasher: Cdr3Hasher, **kwargs) -> None:
+    def __init__(self, hasher: Cdr3Embedder, **kwargs) -> None:
         """
         Initiate Parametric Umap Transformer.
 
         Parameters
         ----------
-        hasher : Cdr3Hasher
+        hasher : Cdr3Embedder
             Fitted hasher object.
         **kwargs
             Keyword arguments passed to `ParametricUMAP()` constructor.
         """
         self.hasher = hasher
-        self.pumap = ParametricUMAP(
-            verbose=True,
-            n_training_epochs=kwargs.pop("n_training_epochs", 10),
-            **kwargs
-        )
+        self.pumap_kwargs = kwargs
 
     def __repr__(self) -> str:
         return "Parametric UMAP visualization"
 
-    def fit(self, data_train: TcrCollection):
+    def fit(self, data_train: Repertoire):
         """
         Train the UMAP using a train dataset.
 
         Parameters
         ----------
-        data_train : TcrCollection
+        data_train : Repertoire
             TcrCollection of training data.
         """
         hashes = self.hasher.transform(data_train)
-        self.pumap.fit(hashes)
+        pumap = ParametricUMAP(
+                verbose=True,
+                n_training_epochs=self.pumap_kwargs.pop("n_training_epochs", 10),
+                **self.pumap_kwargs
+            )
+        pumap.fit(hashes)
+        self.umap_encoder = pumap.encoder
+        del pumap 
 
-    def transform(self, data: TcrCollection):
+
+    def transform(self, data: Repertoire):
         """
         Use trained UMAP model to generate 2D coordinates from TCR sequences.
 
         Parameters
         ----------
-        data : TcrCollection
-            TcrCollection of training data.
+        data : Repertoire
+            Repertoire of training data.
 
         Returns
         -------
@@ -68,7 +72,7 @@ class ParametricUmapTransformer:
             Data with "x" and "y" fields representing UMAP coordinates.
         """
         hashes = self.hasher.transform(data)
-        embedding = self.pumap.transform(hashes)
+        embedding = self.umap_encoder.predict(hashes, batch_size=1000, verbose=True)
         data.data["x"], data.data["y"] = embedding.T
         return data.to_df()
 
@@ -83,10 +87,10 @@ class ParametricUmapTransformer:
             Path and name of folder where model is stored.
         """
         filepath = Path(filepath)
-        pumap = load_ParametricUMAP(filepath / "ParametricUMAP")
-        hasher = joblib.load(filepath / "Cdr3Hasher.joblib")
+        hasher = joblib.load(filepath / "Cdr3Embedder.joblib")
+        encoder = tf.keras.models.load_model(filepath / "encoder", compile=False)
         res = cls(hasher)
-        res.pumap = pumap
+        res.umap_encoder = encoder
         return res
 
     def save(self, filepath: str):
@@ -99,8 +103,8 @@ class ParametricUmapTransformer:
             Filepath and name of folder to save model in.
         """
         filepath = Path(filepath)
-        self.pumap.save(filepath / "ParametricUMAP")
-        joblib.dump(self.hasher, filename=filepath / "Cdr3Hasher.joblib")
+        self.umap_encoder.save(filepath / "encoder")
+        joblib.dump(self.hasher, filename=filepath / "Cdr3Embedder.joblib")
 
 
 class ParametricUmapPlotter:
@@ -167,16 +171,22 @@ class ParametricUmapPlotter:
             else:
                 vmin = min(winsorize(self.df['relative_density_0.05'], limits=(0.01,0.01)))
                 vmax = max(winsorize(self.df['relative_density_0.05'], limits=(0.01,0.01)))
-            match norm:
-                case "log": norm_ = LogNorm(vmin=vmin, vmax=vmax)
-                case "log2": norm_ = FuncNorm(functions=(np.log2, lambda x: 2**x))
-                case "symlog": norm_ = SymLogNorm(linthresh=0.3, linscale=0.3, vmin=vmin, vmax=vmax, base=10)
-                case "symlog2": norm_ = SymLogNorm(linthresh=0.3, linscale=0.3, vmin=vmin, vmax=vmax, base=2)
-                case _: norm_ = Normalize(vmin=vmin, vmax=vmax)
 
-            match norm:
-                case ("symlog" | "symlog2"): cmap_ = "RdBu_r"
-                case _: cmap_ = sns.color_palette("rocket_r", as_cmap=True)
+            if norm == "log":
+                norm_ = LogNorm(vmin=vmin, vmax=vmax)
+            elif norm == "log2":
+                norm_ = FuncNorm(functions=(np.log2, lambda x: 2**x))
+            elif norm == "symlog":
+                norm_ = SymLogNorm(linthresh=0.3, linscale=0.3, vmin=vmin, vmax=vmax, base=10)
+            elif norm == "symlog2":
+                norm_ = SymLogNorm(linthresh=0.3, linscale=0.3, vmin=vmin, vmax=vmax, base=2)
+            else:
+                norm_ = Normalize(vmin=vmin, vmax=vmax)
+
+            if norm in ["symlog", "symlog2"]:
+                cmap_ = "RdBu_r"
+            else:
+                cmap_ = sns.color_palette("rocket_r", as_cmap=True) 
 
             sm = ScalarMappable(norm=norm_, cmap=cmap_)
 
@@ -217,15 +227,7 @@ class ParametricUmapPlotter:
         Parses input color feature, computes and adds column to self.df for
         specific features where a function is available.
         """
-        match color_feature.split('_'):
-            case ["relative", "density", bw]:
-                try : 
-                    bw = float(bw)
-                except ValueError:
-                    pass
-                self.df[color_feature] = self._relative_density(bw)
-            case ["clustcr", "cluster"]:
-                self.df[color_feature] = self._clustcr_cluster()
+        return NotImplementedError
 
     def _relative_density(self, bw=None) -> pd.Series:
         """

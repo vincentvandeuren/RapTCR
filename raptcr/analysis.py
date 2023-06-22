@@ -1,38 +1,55 @@
 import pandas as pd
-from abc import ABC
-from functools import cached_property
+import warnings
 
 from .tools import profile_matrix, motif_from_profile
 
-class TcrCollection(ABC):
-    def __init__(self, df) -> None:
+class Repertoire(pd.DataFrame):
+    # Repertoire-level class attributes here:
+    _metadata = ['repertoire_id']
+
+    @property
+    def _constructor(self):
+        """This is the key to letting Pandas know how to keep
+        derivative `SomeData` the same type as yours.  It should
+        be enough to return the name of the Class.  However, in
+        some cases, `__finalize__` is not called and `my_attr` is
+        not carried over.  We can fix that by constructing a callable
+        that makes sure to call `__finalize__` every time."""
+        def _c(*args, **kwargs):
+            return Repertoire(*args, **kwargs).__finalize__(self)
+        return _c
+
+    def __init__(self, *args, **kwargs):
+        # grab and set the repertoire-level attributes from the keyword arguments
+        self.repertoire_id = kwargs.pop("repertoire_id", None)
+        super().__init__(*args, **kwargs) # initiate df
+        self._validate()
+
+
+    def _validate(self):
         # assert all required columns are present
-        required_cols = self.required_cols if hasattr(self,"required_cols") else ["v_call", "j_call", "junction_aa"]
-        if not set(required_cols).issubset(df.columns):
+        required_cols = ["v_call", "j_call", "junction_aa"]
+        if not set(required_cols).issubset(self.columns):
             raise ValueError(
                 f"Input dataframe requires following columns: {required_cols}"
             )
 
-        self.data = df
+        # add sequence_id column if not present
+        if "sequence_id" not in self.columns:
+            self["sequence_id"] = [str(i) for i in range(len(self))]
 
-    def __repr__(self) -> str:
-        return f"TCR collection of size {len(self.data)}"
+        # assert all sequence_ids are unique
+        if not self["sequence_id"].is_unique:
+            warnings.warn("Not all sequence ids are unique", stacklevel=2)
 
-    def __iter__(self):
-        for s in self.cdr3s:
-            yield s
+    def to_imgt(self):
+        """
+        Parse V and J gene columns to IMGT format.
+        """
+        raise NotImplementedError
 
-    def __getitem__(self, n):
-        return self.cdr3s[n]
 
-    def __len__(self):
-        return len(self.data)
-
-    def to_df(self) -> pd.DataFrame:
-        """Convert to pandas DataFrame"""
-        return self.data
-
-    def sample(self, n:int, weight_col:str=None):
+    def sample(self, weight_col:str="duplicate_count", **kwargs):
         """
         Randomly sample n TCRs.
 
@@ -46,67 +63,35 @@ class TcrCollection(ABC):
             that index to be picked. If a string is passed, the corresponding
             column from self.data will be used as weight.
         """
-        return self.__class__(df=self.data.sample(n, weights=weight_col))
+        if weight_col not in self.columns:
+            warnings.warn(
+                f"`{weight_col}` is not present in your data, sampling was performed without taking frequency information into account.",
+                stacklevel=2
+            )
+            weight_col = None
+        return super().sample(weights=weight_col, **kwargs)
 
-    @cached_property
-    def cdr3s(self):
-        return self.data["junction_aa"].to_list()
-
-
-class Repertoire(TcrCollection):
-    """Class for storing TCR-seq information and calculating useful properties."""
-
-    def __repr__(self) -> str:
-        return f"TCR repertoire of size {len(self.data)}"
-
-
-class Cluster(TcrCollection):
-    """
-    Class for storing Cluster-level clonotype information, and calculating its
-    useful properties.
-    """
-
-    def __repr__(self) -> str:
-        return f"TCR cluster of size {len(self.data)}"
-
-
-    def motif(self, method="standard", cutoff=0.7) -> str:
+    def create_motif(self, method="standard", cutoff=0.7):
+        seqs = self.cdr3s
+        if len(set(map(len, seqs))) > 1: # seqs of different lengths
+            warnings.warn('not all sequences have the same lenght, only those with the most common length get retained in the motif', stacklevel=2)
         return motif_from_profile(profile_matrix(self.cdr3s), method, cutoff)
 
+    @property
+    def cdr3s(self):
+        return self.junction_aa.to_numpy()
 
-class ClusteredRepertoire(TcrCollection):
-    """
-    Class for storing clustered clonotype information.
-    """
-    def __init__(self, df) -> None:
-        self.cluster_ids = df.index.get_level_values(level="cluster").unique().to_list()
-        super().__init__(df)
-
-    def __repr__(self) -> str:
-        if not "-1" in self.cluster_ids:
-            return f"Clustered TCR repertoire of size {len(self.data)} containing {len(self.cluster_ids)} clusters."
-        else:
-            num_unclustered_sequences = len(self.data.xs("-1", level="cluster"))
-            return f"Clustered TCR repertoire of size {len(self.data)} containing {len(self.cluster_ids)-1} clusters and {num_unclustered_sequences} unclustered sequences."
-
-    @classmethod
-    def from_clustcr_result(cls, df, clusteringresult):
-        df_merged = pd.merge(left=df, right=clusteringresult.clusters_df, how="left")
-        df_merged["cluster"] = df_merged["cluster"].fillna(-1).astype(int).astype(str)
-        df_merged=df_merged.reset_index().set_index(["cluster", "index"])
-        return cls(df_merged)
+    @property
+    def data(self):
+        """
+        temporary attribute as to not break methods that used the older Repertoire object
+        """
+        return self
 
     def __iter__(self):
-        for i in self.cluster_ids:
-            if i == "-1":
-                yield Repertoire(self.data.xs(i, level=0))
-            else:
-                yield Cluster(self.data.xs(i, level=0))
+        for s in self.junction_aa:
+            yield s
 
-    def iter_clusters(self):
-        for i in self.cluster_ids:
-            if i != "-1":
-                yield Cluster(self.data.xs(i, level=0))
 
-    def __len__(self):
-        return len(self.data)
+#TODO recreate ClusteredRepertoire subclass of Repertoire. Require cluster_id
+#column (str, unclustered="-1") and useful methods for cluster analysis.

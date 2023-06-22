@@ -1,8 +1,8 @@
-from ..hashing import Cdr3Hasher
-from ..analysis import TcrCollection
+from ...hashing import Cdr3Embedder
+from ...analysis import Repertoire
 
 import pandas as pd
-from umap import UMAP
+from umap.umap_ import UMAP
 from sklearn.base import TransformerMixin
 
 import matplotlib.pyplot as plt
@@ -12,68 +12,72 @@ import plotly.express as px
 import natsort
 
 class UmapTransformer(TransformerMixin):
-    def __init__(self, hasher: Cdr3Hasher, umap:UMAP=None) -> None:
+    def __init__(self, embedder: Cdr3Embedder, umap:UMAP=None, **kwargs) -> None:
         """
         Initiate Umap Transformer.
 
         Parameters
         ----------
-        hasher : Cdr3Hasher
-            Fitted hasher object.
+        embedder : Cdf rCdr3Embedder
+            Fitted embedder object.
         umap : UMAP
             Fitted umap transformer.
-        **kwargs
-            Keyword arguments passed to `ParametricUMAP()` constructor.
         """
         if not umap:
+            n_neighbors = kwargs.pop("n_neighbors", 6)
+            min_dist = kwargs.pop("min_dist", 0)
+            negative_sample_rate = kwargs.pop("negative_sample_rate", 30)
+            local_connectivity = kwargs.pop("local_connectivity", embedder.m)
+
             umap = UMAP(
-                n_neighbors=6,
-                min_dist=0.01,
-                negative_sample_rate=30,
-                local_connectivity=hasher.m
+                n_neighbors=n_neighbors,
+                min_dist=min_dist,
+                negative_sample_rate=negative_sample_rate,
+                local_connectivity=local_connectivity,
+                **kwargs
                 )
-        self.hasher = hasher
+        self.embedder = embedder
         self.umap = umap
 
     def __repr__(self) -> str:
         return "UMAP transformer"
 
-    def fit(self, data_train: TcrCollection):
+    def fit(self, data_train: Repertoire):
         """
         Fit UMAP.
 
         Parameters
         ----------
-        data_train : TcrCollection
-            TcrCollection of training data.
+        data_train : Repertoire
+            Repertoire of training data.
         """
-        hashes = self.hasher.transform(data_train)
+        hashes = self.embedder.transform(data_train)
         self.umap.fit(hashes)
         return self
 
-    def transform(self, data: TcrCollection):
+    def transform(self, data: Repertoire):
         """
         Use trained UMAP model to generate 2D coordinates from TCR sequences.
 
         Parameters
         ----------
-        data : TcrCollection
-            TcrCollection of training data.
+        data : Repertoire
+            Repertoire of training data.
 
         Returns
         -------
         pd.DataFrame
             Data with "x" and "y" fields representing UMAP coordinates.
         """
-        hashes = self.hasher.transform(data)
+        hashes = self.embedder.transform(data)
         embedding = self.umap.transform(hashes)
-        data.data["x"], data.data["y"] = embedding.T
-        return data.to_df()
+        data["x"], data["y"] = embedding.T
+        return data
 
     @classmethod
     def from_file(cls, filepath: str):
         """
-        Read a (trained) Parametric UMAP transformer from a local savefile.
+        Read a (trained) UMAP transformer from a local savefile.
 
         Parameters
         ----------
@@ -84,7 +88,7 @@ class UmapTransformer(TransformerMixin):
 
     def save(self, filepath: str):
         """
-        Save a (trained) Parametric UMAP transformer to a local file.
+        Save a (trained) UMAP transformer to a local file.
 
         Parameters
         ----------
@@ -128,7 +132,7 @@ def plot_umap(df:pd.DataFrame, ax:Axes=None, hue:str=None, **kwargs) -> Axes:
     return ax
 
 
-def plot_interactive_umap(filename:str, df, color, **kwargs) -> None:
+def plot_interactive_umap(filename:str, df, color=None, **kwargs) -> None:
     """
     Plot an interactive scatterplot of the UMAP transformation using plotly. 
     The resulting html can be opened in a browser.
@@ -142,12 +146,17 @@ def plot_interactive_umap(filename:str, df, color, **kwargs) -> None:
     **kwargs
         Other keyword params passed to a px.scatter function, i.e. size, transparency.
     """
+    if not filename.endswith(".html"):
+        filename += ".html"
+
+    if color:
+        kwargs["color"] = color
+        df = df.sort_values(by=color, key=natsort.natsort_keygen(alg=natsort.ns.REAL))
 
     fig = px.scatter(
-        df.sort_values(by=color, key=natsort.natsort_keygen(alg=natsort.ns.REAL)), 
+        df, 
         x="x", 
         y="y", 
-        color = color,
         hover_name="junction_aa", 
         hover_data=df.columns.to_list(), 
         **kwargs

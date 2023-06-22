@@ -38,20 +38,25 @@ def read_AIRR(
         "duplicate_count",
         "junction_aa",
     ]
-    df = pd.read_csv(filepath, sep="\t", usecols=cols)
-    df = df.set_index("sequence_id")
+
+    available_cols = pd.read_csv("data/P1_15.tsv", sep="\t", nrows=0).columns.to_list()
+    if all([col in available_cols for col in cols]):
+        df = pd.read_csv(filepath, sep="\t", usecols=cols)
+    else:
+        df = pd.read_csv(filepath, sep="\t", usecols=available_cols)
+
+    if "sequence_id" in df:
+        df = df.set_index("sequence_id")
 
     if "productive" in df:
         if df["productive"].dtype == "O":
             df["productive"] = df["productive"] == "T"
 
-    if filter_productive:
-        df = df.query("productive == True")
+        if filter_productive:
+            df = df.query("productive == True")
 
     if filter_min_duplicate_count:
         df = df.query(f"duplicate_count > {filter_min_duplicate_count}")
-
-    df = df.drop("productive", axis=1)
 
     if filter_TRB:
         df = df.query('v_call.str.contains("TRB") or j_call.str.contains("TRB")')
@@ -78,22 +83,25 @@ def read_OLGA(filepath: str) -> Repertoire:
     df.columns = ["junction_aa", "v_call", "j_call"]
     return Repertoire(df)
 
-def read_vdjdb(filepath:str, filter_TRB:bool = True, filter_human : bool = True, exclude_10x:bool=False, exclude_studies:list=[]) -> Repertoire:
+def read_vdjdb(filepath:str, filter_TRB:bool = True, filter_human : bool = True, exclude_10x:bool=False, exclude_studies:list=[], min_score:int=None) -> Repertoire:
     """
     Read the vdjdb.slim.txt file into a Repertoire object
 
     Parameters
     ----------
     filepath : str
-        Location of the vdjdb database file.
+        Location of the vdjdb `vdjdb.slim.txt` database file. 
     filter_TRB : bool, default = True
         Retain only TRB sequences.
     filter_human : bool, default = True
         Retain only human-derived sequences.
     exclude_10x : bool, optional
-        Exclude sequence annotations derived only from the 10X genomics "A new way of exploring immunity" study.
+        Exclude sequence annotations derived only from the 10X genomics "A new
+        way of exploring immunity" study.
     exclude_studies : list, optional
         List containing reference_ids of other studies to exclude.
+    min_score : int, optional
+        Minimum VDJDB score to be included.
     """
     df =  pd.read_csv(filepath, sep="\t")
     df.columns = df.columns.str.replace(".", "_", regex=False)
@@ -106,6 +114,8 @@ def read_vdjdb(filepath:str, filter_TRB:bool = True, filter_human : bool = True,
         query_filter += ' and (gene == "TRB")'
     if filter_human:
         query_filter += ' and (species == "HomoSapiens")'
+    if min_score:
+        query_filter += f' and (vdjdb_score >= {min_score})'
 
     df = (
         df

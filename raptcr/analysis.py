@@ -88,7 +88,7 @@ class Repertoire(pd.DataFrame):
         """
         return self
 
-    def __iter__(self):
+    def _iter_sequences(self):
         for s in self.junction_aa:
             yield s
 

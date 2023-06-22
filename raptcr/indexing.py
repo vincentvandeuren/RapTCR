@@ -1,7 +1,6 @@
 from abc import ABC
 from functools import partial, cached_property
 from typing import List, Tuple, Callable
-import time
 
 import faiss
 import numpy as np
@@ -31,7 +30,8 @@ class BaseIndex(ABC):
         self.idx.add(hashes)
 
     def _add_ids(self, X):
-        self.ids = np.hstack((self.ids, list(X)))
+        ids = X.cdr3s if isinstance(X, Repertoire) else list(X)
+        self.ids = np.hstack((self.ids, ids))
 
     def _add_repertoire(self, X):
         if self.rep is None:
@@ -348,8 +348,10 @@ class RadiusSearchResult:
     
     def to_df(self, add_result_info:bool=True) -> pd.DataFrame:
 
+        query_cdr3s = self.query.cdr3s if isinstance(self.query, Repertoire) else list(self.query)
+
         res = pd.DataFrame({
-            "query_sequence":list(self.query),
+            "query_sequence":query_cdr3s,
             "match":[self.ids[self.I[self.lims[i]:self.lims[i+1]]] for i in range(len(self.query))],
             "match_dist": [self.D[self.lims[i]:self.lims[i+1]] for i in range(len(self.query))],
         })

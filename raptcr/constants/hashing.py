@@ -47,3 +47,9 @@ def blosum_to_distance_matrix(blosum_matrix:np.ndarray, scaling_factor:float=0.2
     return distance_matrix
 
 DEFAULT_DM = blosum_to_distance_matrix(BLOSUM_62)
+
+# It may be helpful to take the sqrt of this matrix if we are
+# going to use an L2 (Euclidean) distance in the embedding space...
+# Also, turns out that when we take the sqrt it does satisfy the triangle
+# inequality, which this "squared" version doesn't do.
+TCRDIST_DM = np.maximum(0., np.minimum(4., 4-BLOSUM_62))

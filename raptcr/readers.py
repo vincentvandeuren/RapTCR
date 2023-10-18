@@ -43,7 +43,7 @@ def read_AIRR(
         "junction_aa",
     ]
 
-    available_cols = pd.read_csv("data/P1_15.tsv", sep="\t", nrows=0).columns.to_list()
+    available_cols = pd.read_csv(filepath, sep="\t", nrows=0).columns.to_list()
     if all([col in available_cols for col in cols]):
         df = pd.read_csv(filepath, sep="\t", usecols=cols)
     else:

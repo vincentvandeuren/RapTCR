@@ -1,8 +1,8 @@
 .vscode
-data/
 notebooks/
 temp/
 figures/
+data/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

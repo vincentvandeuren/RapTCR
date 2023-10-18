@@ -26,8 +26,8 @@ setup(
     author_email="vincent.vandeuren@uantwerpen.be",
     url="https://github.com/vincentvandeuren/RapTCR",
     packages=find_packages(),
-    #package_data={"raptcr": ["data/bg_position_matrices.pkl","modules/olga/*",]}, !TODO not forget
-    #include_package_data=True,
+    package_data={"raptcr": ["constants/data/*"]}, #!TODO not forget
+    include_package_data=True,
     install_requires=requirements,
     keywords="",
     classifiers=[

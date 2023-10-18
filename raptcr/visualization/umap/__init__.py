@@ -1,2 +1,1 @@
-from .umap_ import UmapTransformer, plot_interactive_umap, plot_umap
-from parametric_umap import ParametricUmapTransformer, ParametricUmapPlotter
+from .umap_ import UmapTransformer

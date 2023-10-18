@@ -1,6 +1,7 @@
 import pandas as pd
 import warnings
 
+
 from .tools import profile_matrix, motif_from_profile
 
 class Repertoire(pd.DataFrame):
@@ -92,6 +93,13 @@ class Repertoire(pd.DataFrame):
         for s in self.junction_aa:
             yield s
 
+    def __repr__(self) -> str:
+        # workaround: do not validate df when printing
+        return pd.DataFrame(self).__repr__()
+    
+    def _repr_html_(self):
+        # workaround: do not validate df when printing
+        return pd.DataFrame(self)._repr_html_()
 
 #TODO recreate ClusteredRepertoire subclass of Repertoire. Require cluster_id
 #column (str, unclustered="-1") and useful methods for cluster analysis.

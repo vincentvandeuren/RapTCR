@@ -2,7 +2,7 @@ import pandas as pd
 from pathlib import Path
 from .base import GAPCHAR
 
-DATA = Path("/home/vincent/Documents/projects/neighborhood_sampling/constants/data")
+DATA = (Path(__file__).parent/"data").resolve()
 
 IMGT = pd.read_csv(DATA/'imgt_reference.tsv', sep='\t')
 mapping = pd.read_csv(DATA/'adaptive_imgt_mapping.csv')

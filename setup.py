@@ -9,11 +9,7 @@ requirements = [
     "pandas",
     "matplotlib",
     "seaborn",
-    "bitarray",
-    "umap-learn",
-    "tensorflow",
     "colorcet",
-    "faiss-gpu",
 ]
 
 setup(
